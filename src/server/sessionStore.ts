@@ -32,7 +32,7 @@ export interface CartItem {
   createdAt?: number;
 }
 
-export type TableStatus = "IDLE" | "REVIEWING" | "LOCKED" | "AWAITING_PAYMENT";
+export type TableStatus = "IDLE" | "REVIEWING" | "LOCKED" | "AWAITING_PAYMENT" | "CLOSED" | "PAID";
 
 export interface SubmittedRound {
   roundNumber: number;
@@ -56,6 +56,7 @@ export interface TableSession {
   submittedRounds: SubmittedRound[];
   tableGrandTotalInRupees: number;
   tableGrandTotalInCents: number;
+  billStatus?: BillStatus;
   isClosed?: boolean;
   closedAt?: string;
   createdAt: number;
@@ -102,10 +103,25 @@ export interface CompletedTableBill {
 }
 
 // In-memory queue for pending cashier bills per restaurant (e.g. at washbasin/counter awaiting payment)
-export const pendingBillsBuffer: Map<string, CashierBill[]> = new Map();
+const globalForSession = globalThis as unknown as {
+  __tablesync_memoryCache?: Map<string, { value: string; expiresAt: number }>;
+  __tablesync_sessionLocks?: Map<string, Promise<unknown>>;
+  __tablesync_pendingBills?: Map<string, CashierBill[]>;
+  __tablesync_completedBills?: Map<string, CashierBill[]>;
+};
+
+export const pendingBillsBuffer: Map<string, CashierBill[]> =
+  globalForSession.__tablesync_pendingBills || new Map();
+if (!globalForSession.__tablesync_pendingBills) {
+  globalForSession.__tablesync_pendingBills = pendingBillsBuffer;
+}
 
 // In-memory buffer for completed cashier bills per restaurant
-export const completedBillsBuffer: Map<string, CashierBill[]> = new Map();
+export const completedBillsBuffer: Map<string, CashierBill[]> =
+  globalForSession.__tablesync_completedBills || new Map();
+if (!globalForSession.__tablesync_completedBills) {
+  globalForSession.__tablesync_completedBills = completedBillsBuffer;
+}
 
 /**
  * Generates the standardized Redis session key: session:{restaurantSlug}:{tableNumber}
@@ -115,13 +131,46 @@ export function buildSessionKey(restaurantSlug: string, tableNumber: number | st
 }
 
 // In-memory fallback cache to allow zero-downtime local testing when Redis server is offline
-const memoryCache = new Map<string, { value: string; expiresAt: number }>();
+const memoryCache: Map<string, { value: string; expiresAt: number }> =
+  globalForSession.__tablesync_memoryCache || new Map();
+if (!globalForSession.__tablesync_memoryCache) {
+  globalForSession.__tablesync_memoryCache = memoryCache;
+}
+
+// Async lock queue to guarantee atomic multi-user operations per table session
+const sessionLocks: Map<string, Promise<unknown>> =
+  globalForSession.__tablesync_sessionLocks || new Map();
+if (!globalForSession.__tablesync_sessionLocks) {
+  globalForSession.__tablesync_sessionLocks = sessionLocks;
+}
 
 export class SessionStore {
   private redis: Redis;
 
   constructor(redisClient: Redis = defaultRedisClient) {
     this.redis = redisClient;
+  }
+
+  /**
+   * Serializes operations per sessionKey to ensure atomic updates (e.g. concurrent ADD_ITEM)
+   */
+  private async withLock<T>(sessionKey: string, op: () => Promise<T>): Promise<T> {
+    const currentLock = sessionLocks.get(sessionKey) || Promise.resolve();
+    let release: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    sessionLocks.set(sessionKey, nextLock);
+
+    try {
+      await currentLock;
+      return await op();
+    } finally {
+      release!();
+      if (sessionLocks.get(sessionKey) === nextLock) {
+        sessionLocks.delete(sessionKey);
+      }
+    }
   }
 
   /**
@@ -181,50 +230,52 @@ export class SessionStore {
     tableNumber: number | string
   ): Promise<TableSession> {
     const sessionKey = buildSessionKey(restaurantSlug, tableNumber);
-    const existingRaw = await this.readSessionRaw(sessionKey);
+    return this.withLock(sessionKey, async () => {
+      const existingRaw = await this.readSessionRaw(sessionKey);
 
-    if (existingRaw) {
-      try {
-        const parsed = JSON.parse(existingRaw) as TableSession;
-        if (!parsed.status) parsed.status = "IDLE";
-        if (!parsed.diningSessionId) parsed.diningSessionId = generateDiningSessionId();
-        if (!parsed.submittedRounds) parsed.submittedRounds = [];
-        if (parsed.tableGrandTotalInRupees === undefined) {
-          parsed.tableGrandTotalInRupees = parsed.submittedRounds.reduce(
-            (sum, r) => sum + (r.roundTotalInRupees || 0),
-            0
-          );
+      if (existingRaw) {
+        try {
+          const parsed = JSON.parse(existingRaw) as TableSession;
+          if (!parsed.status) parsed.status = "IDLE";
+          if (!parsed.diningSessionId) parsed.diningSessionId = generateDiningSessionId();
+          if (!parsed.submittedRounds) parsed.submittedRounds = [];
+          if (parsed.tableGrandTotalInRupees === undefined) {
+            parsed.tableGrandTotalInRupees = parsed.submittedRounds.reduce(
+              (sum, r) => sum + (r.roundTotalInRupees || 0),
+              0
+            );
+          }
+          if (parsed.tableGrandTotalInCents === undefined) {
+            parsed.tableGrandTotalInCents = parsed.submittedRounds.reduce(
+              (sum, r) => sum + (r.roundTotalInCents || 0),
+              0
+            );
+          }
+          return parsed;
+        } catch {
+          // Parse error, re-create session below
         }
-        if (parsed.tableGrandTotalInCents === undefined) {
-          parsed.tableGrandTotalInCents = parsed.submittedRounds.reduce(
-            (sum, r) => sum + (r.roundTotalInCents || 0),
-            0
-          );
-        }
-        return parsed;
-      } catch {
-        // Parse error, re-create session below
       }
-    }
 
-    const newSession: TableSession = {
-      diningSessionId: generateDiningSessionId(),
-      restaurantSlug: restaurantSlug.trim().toLowerCase(),
-      tableNumber: Number(tableNumber),
-      users: [],
-      cart: [],
-      consensusVotes: {},
-      roundNumber: 1,
-      status: "IDLE",
-      submittedRounds: [],
-      tableGrandTotalInRupees: 0,
-      tableGrandTotalInCents: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+      const newSession: TableSession = {
+        diningSessionId: generateDiningSessionId(),
+        restaurantSlug: restaurantSlug.trim().toLowerCase(),
+        tableNumber: Number(tableNumber),
+        users: [],
+        cart: [],
+        consensusVotes: {},
+        roundNumber: 1,
+        status: "IDLE",
+        submittedRounds: [],
+        tableGrandTotalInRupees: 0,
+        tableGrandTotalInCents: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
 
-    await this.writeSessionRaw(sessionKey, JSON.stringify(newSession));
-    return newSession;
+      await this.writeSessionRaw(sessionKey, JSON.stringify(newSession));
+      return newSession;
+    });
   }
 
   /**
@@ -240,73 +291,108 @@ export class SessionStore {
    * Add a user to the session (idempotent; updates user if already present)
    */
   async addUser(sessionKey: string, userObj: SessionUser): Promise<TableSession> {
-    let session = await this.getSession(sessionKey);
-    if (!session) {
-      // Parse key if possible to create session
-      const parts = sessionKey.split(":");
-      if (parts.length >= 3) {
-        session = await this.getOrCreateSession(parts[1], parts[2]);
-      } else {
-        throw new Error(`Session not found for key: ${sessionKey}`);
+    return this.withLock(sessionKey, async () => {
+      let session = await this.getSession(sessionKey);
+      if (!session) {
+        // Parse key if possible to create session
+        const parts = sessionKey.split(":");
+        if (parts.length >= 3) {
+          session = await this.getOrCreateSession(parts[1], parts[2]);
+        } else {
+          throw new Error(`Session not found for key: ${sessionKey}`);
+        }
       }
-    }
 
-    const existingIdx = session.users.findIndex((u) => u.id === userObj.id);
-    const userToSave: SessionUser = {
-      ...userObj,
-      joinedAt: userObj.joinedAt || Date.now(),
-    };
+      // Anchor diningSessionId
+      if (!session.diningSessionId) {
+        session.diningSessionId = generateDiningSessionId();
+      }
 
-    if (existingIdx >= 0) {
-      session.users[existingIdx] = { ...session.users[existingIdx], ...userToSave };
-    } else {
-      session.users.push(userToSave);
-    }
+      const existingIdx = session.users.findIndex((u) => u.id === userObj.id);
+      const userToSave: SessionUser = {
+        ...userObj,
+        joinedAt: userObj.joinedAt || Date.now(),
+      };
 
-    session.updatedAt = Date.now();
-    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
-    return session;
+      if (existingIdx >= 0) {
+        session.users[existingIdx] = { ...session.users[existingIdx], ...userToSave };
+      } else {
+        session.users.push(userToSave);
+      }
+
+      session.updatedAt = Date.now();
+      await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+      return session;
+    });
   }
 
   /**
    * Remove a user from the session and delete their vote
    */
   async removeUser(sessionKey: string, userId: string): Promise<TableSession> {
-    const session = await this.getSession(sessionKey);
-    if (!session) {
-      throw new Error(`Session not found for key: ${sessionKey}`);
-    }
+    return this.withLock(sessionKey, async () => {
+      const session = await this.getSession(sessionKey);
+      if (!session) {
+        throw new Error(`Session not found for key: ${sessionKey}`);
+      }
 
-    session.users = session.users.filter((u) => u.id !== userId);
-    delete session.consensusVotes[userId];
-    session.updatedAt = Date.now();
+      session.users = session.users.filter((u) => u.id !== userId);
+      delete session.consensusVotes[userId];
+      session.updatedAt = Date.now();
 
-    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
-    return session;
+      await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+      return session;
+    });
   }
 
   /**
    * Add a cart item to the session
+   * Atomically mutates cart array and anchors existing diningSessionId
    * Resets consensus votes so all diners review cart changes
    */
   async addItem(sessionKey: string, cartItem: CartItem): Promise<TableSession> {
-    const session = await this.getSession(sessionKey);
-    if (!session) {
-      throw new Error(`Session not found for key: ${sessionKey}`);
-    }
+    return this.withLock(sessionKey, async () => {
+      let session = await this.getSession(sessionKey);
+      if (!session) {
+        const parts = sessionKey.split(":");
+        if (parts.length >= 3) {
+          session = await this.getOrCreateSession(parts[1], parts[2]);
+        } else {
+          throw new Error(`Session not found for key: ${sessionKey}`);
+        }
+      }
 
-    const item: CartItem = {
-      ...cartItem,
-      id: cartItem.id || `citem_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-      createdAt: cartItem.createdAt || Date.now(),
-    };
+      // Anchor diningSessionId - NEVER regenerate if already present
+      if (!session.diningSessionId) {
+        session.diningSessionId = generateDiningSessionId();
+      }
 
-    session.cart.push(item);
-    session.consensusVotes = {}; // Invalidate votes on cart mutation
-    session.updatedAt = Date.now();
+      // Safeguard: Adding dishes must ONLY append to cart and NEVER mutate session status to CLOSED
+      // If table was in REVIEWING, adding an item resets to IDLE so all diners review the new addition
+      if (session.status === "REVIEWING") {
+        session.status = "IDLE";
+      }
 
-    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
-    return session;
+      const item: CartItem = {
+        ...cartItem,
+        id: cartItem.id || `citem_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        createdAt: cartItem.createdAt || Date.now(),
+      };
+
+      // Atomic cart array update: Check if item already exists by ID (deduplicate dual Socket/HTTP dispatch)
+      const existingIdx = session.cart.findIndex((i) => i.id === item.id);
+      if (existingIdx >= 0) {
+        session.cart[existingIdx] = item;
+      } else {
+        session.cart.push(item);
+      }
+
+      session.consensusVotes = {}; // Invalidate votes on cart mutation
+      session.updatedAt = Date.now();
+
+      await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+      return session;
+    });
   }
 
   /**
@@ -318,31 +404,39 @@ export class SessionStore {
     cartItemId: string,
     requestingUserId: string
   ): Promise<TableSession> {
-    const session = await this.getSession(sessionKey);
-    if (!session) {
-      throw new Error(`Session not found for key: ${sessionKey}`);
-    }
+    return this.withLock(sessionKey, async () => {
+      const session = await this.getSession(sessionKey);
+      if (!session) {
+        throw new Error(`Session not found for key: ${sessionKey}`);
+      }
 
-    const itemIndex = session.cart.findIndex((i) => i.id === cartItemId);
-    if (itemIndex === -1) {
-      throw new Error(`Cart item "${cartItemId}" not found in session.`);
-    }
+      // Anchor diningSessionId
+      if (!session.diningSessionId) {
+        session.diningSessionId = generateDiningSessionId();
+      }
 
-    const item = session.cart[itemIndex];
+      const itemIndex = session.cart.findIndex((i) => i.id === cartItemId);
+      if (itemIndex === -1) {
+        // Already removed concurrently; return safely without error
+        return session;
+      }
 
-    // STRICT OWNER CHECK: Prevent deletion if requestingUserId does not match item.addedByUserId
-    if (item.addedByUserId !== requestingUserId) {
-      throw new Error(
-        `Permission denied: Only the user who added this item (${item.addedByUserId}) can remove it. Request from user (${requestingUserId}) was rejected.`
-      );
-    }
+      const item = session.cart[itemIndex];
 
-    session.cart.splice(itemIndex, 1);
-    session.consensusVotes = {}; // Invalidate votes on cart mutation
-    session.updatedAt = Date.now();
+      // STRICT OWNER CHECK: Prevent deletion if requestingUserId does not match item.addedByUserId
+      if (item.addedByUserId !== requestingUserId) {
+        throw new Error(
+          `Permission denied: Only the user who added this item (${item.addedByUserId}) can remove it. Request from user (${requestingUserId}) was rejected.`
+        );
+      }
 
-    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
-    return session;
+      session.cart.splice(itemIndex, 1);
+      session.consensusVotes = {}; // Invalidate votes on cart mutation
+      session.updatedAt = Date.now();
+
+      await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+      return session;
+    });
   }
 
   /**
@@ -353,16 +447,18 @@ export class SessionStore {
     userId: string,
     hasApproved: boolean
   ): Promise<TableSession> {
-    const session = await this.getSession(sessionKey);
-    if (!session) {
-      throw new Error(`Session not found for key: ${sessionKey}`);
-    }
+    return this.withLock(sessionKey, async () => {
+      const session = await this.getSession(sessionKey);
+      if (!session) {
+        throw new Error(`Session not found for key: ${sessionKey}`);
+      }
 
-    session.consensusVotes[userId] = hasApproved;
-    session.updatedAt = Date.now();
+      session.consensusVotes[userId] = hasApproved;
+      session.updatedAt = Date.now();
 
-    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
-    return session;
+      await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+      return session;
+    });
   }
 
   /**

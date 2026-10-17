@@ -32,6 +32,26 @@ interface GuestTableClientProps {
   categories?: ClientMenuCategory[];
 }
 
+/**
+ * Safely merges the authoritative server cart with any recent local optimistic items
+ * that haven't reached the server yet (<4s old), ensuring zero item dropouts when
+ * multiple friends simultaneously add dishes.
+ */
+function mergeServerCart(
+  prevCart: CartItem[],
+  serverCart: CartItem[],
+  currentUserId?: string
+): CartItem[] {
+  const serverIds = new Set(serverCart.map((i) => i.id));
+  const recentLocalPending = prevCart.filter(
+    (item) =>
+      item.addedByUserId === currentUserId &&
+      !serverIds.has(item.id) &&
+      Date.now() - (item.createdAt || 0) < 4000
+  );
+  return [...serverCart, ...recentLocalPending];
+}
+
 export default function GuestTableClient({
   restaurantSlug,
   restaurantName,
@@ -151,9 +171,17 @@ export default function GuestTableClient({
       },
       (res: { success?: boolean; session?: TableSession }) => {
         if (res?.success && res.session) {
-          setSession(res.session);
+          setSession((prev) => ({
+            ...res.session!,
+            cart: mergeServerCart(prev.cart, res.session!.cart, profile.userId),
+          }));
           if (res.session.diningSessionId) {
             setJoinedDiningSessionId(res.session.diningSessionId);
+          }
+          if (res.session.status === "CLOSED" || res.session.billStatus === "PAID") {
+            setIsTableClosed(true);
+          } else {
+            setIsTableClosed(false);
           }
         }
       }
@@ -175,9 +203,17 @@ export default function GuestTableClient({
         { restaurantSlug, tableNumber },
         (res: { success?: boolean; session?: TableSession }) => {
           if (res?.success && res.session) {
-            setSession(res.session);
+            setSession((prev) => ({
+              ...res.session!,
+              cart: mergeServerCart(prev.cart, res.session!.cart, undefined),
+            }));
             if (res.session.diningSessionId) {
               setJoinedDiningSessionId(res.session.diningSessionId);
+            }
+            if (res.session.status === "CLOSED" || res.session.billStatus === "PAID") {
+              setIsTableClosed(true);
+            } else {
+              setIsTableClosed(false);
             }
           }
         }
@@ -256,9 +292,17 @@ export default function GuestTableClient({
             .then((res) => res.json())
             .then((data) => {
               if (data?.success && data.session) {
-                setSession(data.session);
+                setSession((prev) => ({
+                  ...data.session,
+                  cart: mergeServerCart(prev.cart, data.session.cart, profile.userId),
+                }));
                 if (data.session.diningSessionId) {
                   setJoinedDiningSessionId(data.session.diningSessionId);
+                }
+                if (data.session.status === "CLOSED" || data.session.billStatus === "PAID") {
+                  setIsTableClosed(true);
+                } else {
+                  setIsTableClosed(false);
                 }
               }
             })
@@ -275,6 +319,14 @@ export default function GuestTableClient({
           .then((data) => {
             if (data?.success && data.session) {
               setSession(data.session);
+              if (data.session.diningSessionId) {
+                setJoinedDiningSessionId(data.session.diningSessionId);
+              }
+              if (data.session.status === "CLOSED" || data.session.billStatus === "PAID") {
+                setIsTableClosed(true);
+              } else {
+                setIsTableClosed(false);
+              }
             }
           })
           .catch(() => {});
@@ -313,26 +365,32 @@ export default function GuestTableClient({
         if (!res.ok) return;
         const data = await res.json();
         if (data?.success && data.session && isMounted) {
+          // If server diningSessionId changed, update local reference without closing table
+          if (
+            data.session.diningSessionId &&
+            data.session.diningSessionId !== joinedDiningSessionIdRef.current
+          ) {
+            setJoinedDiningSessionId(data.session.diningSessionId);
+          }
+
+          // STRICT RESTRICTION: ONLY show table closed screen if explicitly CLOSED or billStatus === PAID
+          const isExplicitlyClosed =
+            data.session.status === "CLOSED" ||
+            data.session.billStatus === "PAID";
+
+          if (isExplicitlyClosed) {
+            setIsTableClosed(true);
+            setIsReviewModalOpen(false);
+          } else {
+            setIsTableClosed(false);
+          }
+
           setSession((prev) => {
             const isNewer = data.session.updatedAt > prev.updatedAt;
             const cartChanged = data.session.cart.length !== prev.cart.length;
             const usersChanged = data.session.users.length !== prev.users.length;
             const statusChanged = data.session.status !== prev.status;
             const roundChanged = data.session.roundNumber !== prev.roundNumber;
-
-            // Detect table turnover from cashier settlement
-            if (
-              joinedDiningSessionIdRef.current &&
-              data.session.diningSessionId &&
-              data.session.diningSessionId !== joinedDiningSessionIdRef.current
-            ) {
-              setIsTableClosed(true);
-              setIsReviewModalOpen(false);
-            }
-
-            if (!joinedDiningSessionIdRef.current && userProfileRef.current && data.session.diningSessionId) {
-              setJoinedDiningSessionId(data.session.diningSessionId);
-            }
 
             if (isNewer || cartChanged || usersChanged || statusChanged || roundChanged) {
               // Trigger item addition animation if items increased
@@ -357,7 +415,10 @@ export default function GuestTableClient({
                 showToast(`Round #${prev.roundNumber} sent to kitchen!`, "success");
               }
 
-              return data.session;
+              return {
+                ...data.session,
+                cart: mergeServerCart(prev.cart, data.session.cart, userProfileRef.current?.userId),
+              };
             }
             return prev;
           });
@@ -410,6 +471,13 @@ export default function GuestTableClient({
       addedItem?: CartItem;
     }) {
       if (data.session) {
+        if (
+          data.session.diningSessionId &&
+          data.session.diningSessionId !== joinedDiningSessionIdRef.current
+        ) {
+          setJoinedDiningSessionId(data.session.diningSessionId);
+        }
+
         setSession((prev) => {
           // If items were added to cart
           if (data.session.cart.length > prev.cart.length) {
@@ -422,7 +490,10 @@ export default function GuestTableClient({
               );
             }
           }
-          return data.session;
+          return {
+            ...data.session,
+            cart: mergeServerCart(prev.cart, data.session.cart, userProfileRef.current?.userId),
+          };
         });
       }
     }
@@ -458,7 +529,29 @@ export default function GuestTableClient({
     }
 
     function onTableStateSync(data: { session: TableSession }) {
-      if (data.session) setSession(data.session);
+      if (data.session) {
+        if (
+          data.session.diningSessionId &&
+          data.session.diningSessionId !== joinedDiningSessionIdRef.current
+        ) {
+          setJoinedDiningSessionId(data.session.diningSessionId);
+        }
+
+        if (
+          data.session.status === "CLOSED" ||
+          data.session.billStatus === "PAID"
+        ) {
+          setIsTableClosed(true);
+          setIsReviewModalOpen(false);
+        } else {
+          setIsTableClosed(false);
+        }
+
+        setSession((prev) => ({
+          ...data.session,
+          cart: mergeServerCart(prev.cart, data.session.cart, userProfileRef.current?.userId),
+        }));
+      }
     }
 
     function onTableSessionClosed(data: { message?: string }) {
@@ -787,6 +880,8 @@ export default function GuestTableClient({
         {
           restaurantSlug,
           tableNumber,
+          cartItemId: optimisticCartItem.id,
+          id: optimisticCartItem.id,
           menuItemId: item.menuItemId,
           name: item.name,
           priceInRupees: item.priceInRupees ?? item.priceInCents,
@@ -799,7 +894,13 @@ export default function GuestTableClient({
         },
         (res: { success?: boolean; session?: TableSession }) => {
           if (res?.success && res.session) {
-            setSession(res.session);
+            if (res.session.diningSessionId && res.session.diningSessionId !== joinedDiningSessionIdRef.current) {
+              setJoinedDiningSessionId(res.session.diningSessionId);
+            }
+            setSession((prev) => ({
+              ...res.session!,
+              cart: mergeServerCart(prev.cart, res.session!.cart, userProfile.userId),
+            }));
           }
         }
       );
@@ -819,7 +920,13 @@ export default function GuestTableClient({
       .then((res) => res.json())
       .then((data) => {
         if (data?.success && data.session) {
-          setSession(data.session);
+          if (data.session.diningSessionId && data.session.diningSessionId !== joinedDiningSessionIdRef.current) {
+            setJoinedDiningSessionId(data.session.diningSessionId);
+          }
+          setSession((prev) => ({
+            ...data.session,
+            cart: mergeServerCart(prev.cart, data.session.cart, userProfile.userId),
+          }));
         }
       })
       .catch((err) => {
@@ -857,6 +964,9 @@ export default function GuestTableClient({
         },
         (res: { success?: boolean; session?: TableSession; error?: string; message?: string }) => {
           if (res?.success && res.session) {
+            if (res.session.diningSessionId && res.session.diningSessionId !== joinedDiningSessionIdRef.current) {
+              setJoinedDiningSessionId(res.session.diningSessionId);
+            }
             setSession(res.session);
           } else if (res?.error === "ERROR_UNAUTHORIZED") {
             showToast(res.message || "Cannot delete item added by another diner.", "error");
@@ -880,6 +990,9 @@ export default function GuestTableClient({
       .then((res) => res.json())
       .then((data) => {
         if (data?.success && data.session) {
+          if (data.session.diningSessionId && data.session.diningSessionId !== joinedDiningSessionIdRef.current) {
+            setJoinedDiningSessionId(data.session.diningSessionId);
+          }
           setSession(data.session);
         } else if (data?.error) {
           showToast(data.error, "error");

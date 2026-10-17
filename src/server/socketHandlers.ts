@@ -62,6 +62,8 @@ export const AddCartItemSchema = z.object({
   notes: z.string().optional(),
   userId: z.string().optional(),
   userName: z.string().optional(),
+  cartItemId: z.string().optional(),
+  id: z.string().optional(),
 });
 
 export const RemoveCartItemSchema = z.object({
@@ -368,7 +370,10 @@ export function registerSocketHandlers(io: Server) {
         }
 
         // Attach cartItemId, addedByUserId, addedByName, and timestamp
-        const cartItemId = `citem_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const cartItemId =
+          parsed.data.cartItemId ||
+          parsed.data.id ||
+          `citem_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const cartItem: CartItem = {
           id: cartItemId,
           menuItemId,
