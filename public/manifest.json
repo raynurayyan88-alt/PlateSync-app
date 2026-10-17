@@ -1,0 +1,41 @@
+{
+  "name": "TableSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
+  "short_name": "TableSync",
+  "description": "Real-time multiplayer table dining and Kitchen Display System for restaurants in India.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "orientation": "any",
+  "categories": ["food", "business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Kitchen Display System",
+      "short_name": "Kitchen KDS",
+      "description": "Open real-time Kitchen Display System monitor",
+      "url": "/kds/grand-empire",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Guest Table 5",
+      "short_name": "Table 5",
+      "description": "Open Table 5 collaborative ordering session",
+      "url": "/r/grand-empire/t/5",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    }
+  ]
+}

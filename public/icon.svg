@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Clean Light Background -->
+  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#F1F5F9" stroke-width="8"/>
+
+  <g fill="none" stroke="#EA580C" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Live-Sync Circular Outer Ring (Plate Perimeter with Dual Directional Sync Waves) -->
+    <!-- Top-Right Arc -->
+    <path d="M 216 88 A 176 176 0 0 1 432 256 A 176 176 0 0 1 384 372" stroke-width="26"/>
+    <!-- Top-Right Sync Arrow -->
+    <polyline points="244,64 216,88 244,112" stroke-width="26"/>
+
+    <!-- Bottom-Left Arc -->
+    <path d="M 296 424 A 176 176 0 0 1 80 256 A 176 176 0 0 1 128 140" stroke-width="26"/>
+    <!-- Bottom-Left Sync Arrow -->
+    <polyline points="268,448 296,424 268,400" stroke-width="26"/>
+
+    <!-- Dining Cloche Dome -->
+    <path d="M 160 312 A 96 96 0 0 1 352 312" stroke-width="26"/>
+
+    <!-- Plate Rim / Base Tray -->
+    <line x1="132" y1="312" x2="380" y2="312" stroke-width="26"/>
+    <!-- Plate Underside Accent -->
+    <path d="M 184 340 L 328 340" stroke-width="18"/>
+  </g>
+
+  <!-- Cloche Handle: Minimalist Geometric QR Finder Node -->
+  <rect x="238" y="180" width="36" height="36" rx="8" fill="none" stroke="#EA580C" stroke-width="12"/>
+  <rect x="250" y="192" width="12" height="12" rx="3" fill="#EA580C"/>
+</svg>
