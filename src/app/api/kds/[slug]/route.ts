@@ -30,7 +30,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
         if (restaurant) {
           const dbOrders = await prisma.order.findMany({
-            where: { restaurantId: restaurant.id },
+            where: {
+              restaurantId: restaurant.id,
+              status: { not: "ACTIVE_TABLE_SESSION" },
+            },
             orderBy: { createdAt: "desc" },
             take: 100,
           });

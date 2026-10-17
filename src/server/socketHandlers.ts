@@ -180,7 +180,8 @@ export async function flushOrderToDatabase(
   roundNumber: number,
   cart: CartItem[],
   consensusVotes: Record<string, boolean>,
-  diningSessionId?: string
+  diningSessionId?: string,
+  orderStatus: string = "SENT_TO_KITCHEN"
 ): Promise<{ orderId: string; status: string; totalInCents: number }> {
   const totalInCents = cart.reduce((sum, item) => sum + item.priceInCents * item.quantity, 0);
   const payloadSnapshot = {
@@ -198,7 +199,7 @@ export async function flushOrderToDatabase(
     const dbOp = async () => {
       // Attempt to link to the existing restaurant in PostgreSQL
       let restaurant = await prisma.restaurant.findUnique({
-        where: { slug: restaurantSlug },
+        where: { slug: restaurantSlug.trim().toLowerCase() },
       });
 
       if (!restaurant) {
@@ -206,7 +207,7 @@ export async function flushOrderToDatabase(
         restaurant = await prisma.restaurant.create({
           data: {
             name: restaurantSlug.replace(/-/g, " ").toUpperCase(),
-            slug: restaurantSlug,
+            slug: restaurantSlug.trim().toLowerCase(),
           },
         });
       }
@@ -216,7 +217,7 @@ export async function flushOrderToDatabase(
           restaurantId: restaurant.id,
           tableNumber,
           roundNumber,
-          status: "CONFIRMED",
+          status: orderStatus,
           payloadJson: payloadSnapshot as unknown as Prisma.InputJsonValue,
         },
       });
@@ -225,11 +226,11 @@ export async function flushOrderToDatabase(
     const createdOrder = await Promise.race([
       dbOp(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Database operation timed out")), 150)
+        setTimeout(() => reject(new Error("Database operation timed out")), 200)
       ),
     ]);
 
-    console.log(`[DB] Flushed Order #${createdOrder.id} to PostgreSQL (Table ${tableNumber}, Round ${roundNumber}, $${(totalInCents / 100).toFixed(2)})`);
+    console.log(`[DB] Flushed Order #${createdOrder.id} to PostgreSQL (Table ${tableNumber}, Round ${roundNumber}, status: ${orderStatus}, ₹${(totalInCents / 100).toFixed(2)})`);
     return {
       orderId: createdOrder.id,
       status: createdOrder.status,
@@ -241,7 +242,7 @@ export async function flushOrderToDatabase(
     const fallbackOrderId = `ord_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     return {
       orderId: fallbackOrderId,
-      status: "CONFIRMED",
+      status: orderStatus,
       totalInCents,
     };
   }
@@ -564,13 +565,14 @@ export function registerSocketHandlers(io: Server) {
 
         console.log(`[Socket.IO] Consensus vote by ${requestingUserId} at ${tableRoom}: ${hasApproved}`);
 
-        // Check if ALL seated users have approved (100% consensus)
+        // Check if ALL seated users have approved (unanimous consensus via approvals array)
         const totalSeatedUsers = updatedSession.users.length;
         const hasCartItems = updatedSession.cart.length > 0;
+        const approvalsCount = updatedSession.approvals?.length || 0;
         const allApproved =
           totalSeatedUsers > 0 &&
           hasCartItems &&
-          updatedSession.users.every((u) => updatedSession.consensusVotes[u.id] === true);
+          approvalsCount >= totalSeatedUsers;
 
         if (allApproved) {
           console.log(`[Socket.IO] 🎯 100% CONSENSUS REACHED at ${tableRoom}! Finalizing order...`);
@@ -582,6 +584,7 @@ export function registerSocketHandlers(io: Server) {
           const cartSnapshot = [...updatedSession.cart];
           const completedRound = updatedSession.roundNumber;
           const votesSnapshot = { ...updatedSession.consensusVotes };
+          const approvalsSnapshot = [...(updatedSession.approvals || [])];
 
           const roundTotalInCents = cartSnapshot.reduce((sum, item) => sum + item.priceInCents * item.quantity, 0);
           const roundTotalInRupees = cartSnapshot.reduce(
@@ -590,14 +593,15 @@ export function registerSocketHandlers(io: Server) {
             0
           );
 
-          // b. Flushes cart snapshot to PostgreSQL Order table
+          // b. Flushes cart snapshot to PostgreSQL Order table with status SENT_TO_KITCHEN
           const dbOrder = await flushOrderToDatabase(
             restaurantSlug,
             tableNumber,
             completedRound,
             cartSnapshot,
             votesSnapshot,
-            updatedSession.diningSessionId
+            updatedSession.diningSessionId,
+            "SENT_TO_KITCHEN"
           );
 
           // c. Emits NEW_ORDER_TICKET to room:kds:{restaurantSlug}
@@ -611,7 +615,7 @@ export function registerSocketHandlers(io: Server) {
             totalInCents: dbOrder.totalInCents,
             items: cartSnapshot,
             placedAt: new Date().toISOString(),
-            approvedBy: Object.keys(votesSnapshot),
+            approvedBy: approvalsSnapshot,
           };
 
           const submittedRound: SubmittedRound = {
@@ -621,7 +625,7 @@ export function registerSocketHandlers(io: Server) {
             roundTotalInRupees,
             roundTotalInCents,
             placedAt: new Date().toISOString(),
-            approvedBy: Object.keys(votesSnapshot),
+            approvedBy: approvalsSnapshot,
           };
 
           // Save to KDS fast-sync memory buffer

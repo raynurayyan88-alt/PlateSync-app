@@ -51,15 +51,16 @@ export default function ConsensusModal({
   const users = session.users || [];
   const cart = session.cart || [];
   const votes = session.consensusVotes || {};
+  const approvals = session.approvals || Object.keys(votes).filter((k) => votes[k]);
   const currentRound = lastPlacedOrder ? lastPlacedOrder.roundNumber : session.roundNumber;
 
   const colorMap = buildTableColorMap(users);
 
   // Real-time vote tallies
   const totalUsers = Math.max(1, users.length);
-  const approvedUsers = users.filter((u) => votes[u.id]);
+  const approvedUsers = users.filter((u) => approvals.includes(u.id) || votes[u.id]);
   const approvedCount = approvedUsers.length;
-  const hasCurrentUserApproved = !!votes[currentUserId];
+  const hasCurrentUserApproved = approvals.includes(currentUserId) || !!votes[currentUserId];
 
   // Calculate table total
   const totalCartInCents = cart.reduce(
@@ -239,7 +240,7 @@ export default function ConsensusModal({
                   {users.map((u, idx) => {
                     const palette: PaletteColor =
                       colorMap.get(u.id) || getGuestSignatureColor(u.id, idx);
-                    const isApproved = !!votes[u.id];
+                    const isApproved = approvals.includes(u.id) || !!votes[u.id];
                     const startAngle = (idx * 360) / totalUsers;
 
                     return (
@@ -292,7 +293,7 @@ export default function ConsensusModal({
                   {users.map((u: SessionUser, idx: number) => {
                     const palette: PaletteColor =
                       colorMap.get(u.id) || getGuestSignatureColor(u.id, idx);
-                    const isApproved = !!votes[u.id];
+                    const isApproved = approvals.includes(u.id) || !!votes[u.id];
                     const isYou = u.id === currentUserId;
 
                     return (

@@ -131,13 +131,14 @@ export async function POST(request: NextRequest) {
           hasApproved
         );
 
-        // Check for 100% consensus
+        // Check for 100% consensus via approvals array
         const totalSeatedUsers = updatedSession.users.length;
         const hasCartItems = updatedSession.cart.length > 0;
+        const approvalsCount = updatedSession.approvals?.length || 0;
         const allApproved =
           totalSeatedUsers > 0 &&
           hasCartItems &&
-          updatedSession.users.every((u) => updatedSession.consensusVotes[u.id] === true);
+          approvalsCount >= totalSeatedUsers;
 
         if (allApproved) {
           await sessionStore.setSessionStatus(sessionKey, "LOCKED");
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
           const cartSnapshot = [...updatedSession.cart];
           const completedRound = updatedSession.roundNumber;
           const votesSnapshot = { ...updatedSession.consensusVotes };
+          const approvalsSnapshot = [...(updatedSession.approvals || [])];
 
           const roundTotalInCents = cartSnapshot.reduce((sum, item) => sum + item.priceInCents * item.quantity, 0);
           const roundTotalInRupees = cartSnapshot.reduce(
@@ -153,14 +155,15 @@ export async function POST(request: NextRequest) {
             0
           );
 
-          // Flush order to database
+          // Flush order snapshot to database with status SENT_TO_KITCHEN
           const dbOrder = await flushOrderToDatabase(
             restaurantSlug,
             tableNumber,
             completedRound,
             cartSnapshot,
             votesSnapshot,
-            updatedSession.diningSessionId
+            updatedSession.diningSessionId,
+            "SENT_TO_KITCHEN"
           );
 
           // Prepare KDS ticket
@@ -170,11 +173,11 @@ export async function POST(request: NextRequest) {
             restaurantSlug: slugKey,
             tableNumber,
             roundNumber: completedRound,
-            status: dbOrder.status,
+            status: "SENT_TO_KITCHEN",
             totalInCents: dbOrder.totalInCents,
             items: cartSnapshot,
             placedAt: new Date().toISOString(),
-            approvedBy: Object.keys(votesSnapshot),
+            approvedBy: approvalsSnapshot,
           };
 
           const submittedRound: SubmittedRound = {
@@ -184,7 +187,7 @@ export async function POST(request: NextRequest) {
             roundTotalInRupees,
             roundTotalInCents,
             placedAt: new Date().toISOString(),
-            approvedBy: Object.keys(votesSnapshot),
+            approvedBy: approvalsSnapshot,
           };
 
           // Cache in fast-sync in-memory KDS buffer
@@ -194,7 +197,7 @@ export async function POST(request: NextRequest) {
             ...existingTickets.filter((t) => t.orderId !== ticketPayload.orderId),
           ]);
 
-          // Advance table session to next round and record round summary
+          // Advance table session to next round and record round summary (orderPlaced = true, lastSubmittedRound = completedRound)
           const nextSession = await sessionStore.resetForNextRound(sessionKey, submittedRound);
 
           return NextResponse.json({
@@ -207,6 +210,9 @@ export async function POST(request: NextRequest) {
             session: nextSession,
           });
         }
+
+        updatedSession.orderPlaced = false;
+        await sessionStore.saveSession(updatedSession);
 
         return NextResponse.json({
           success: true,
@@ -258,7 +264,7 @@ export async function POST(request: NextRequest) {
               where: {
                 restaurant: { slug: slugKey },
                 tableNumber: result.paidBill.tableNumber,
-                status: { notIn: ["COMPLETED", "ARCHIVED"] },
+                status: { notIn: ["COMPLETED", "ARCHIVED", "ACTIVE_TABLE_SESSION"] },
               },
               data: { status: "COMPLETED" },
             });
@@ -310,7 +316,7 @@ export async function POST(request: NextRequest) {
             where: {
               restaurant: { slug: slugKey },
               tableNumber,
-              status: { notIn: ["COMPLETED", "ARCHIVED"] },
+              status: { notIn: ["COMPLETED", "ARCHIVED", "ACTIVE_TABLE_SESSION"] },
             },
             data: { status: "COMPLETED" },
           });

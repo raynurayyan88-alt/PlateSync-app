@@ -77,15 +77,20 @@ export default function GuestTableClient({
     tableNumber,
     users: [],
     cart: [],
+    approvals: [],
     consensusVotes: {},
     roundNumber: 1,
     status: "IDLE",
     submittedRounds: [],
     tableGrandTotalInRupees: 0,
     tableGrandTotalInCents: 0,
+    orderPlaced: false,
     createdAt: 0,
     updatedAt: 0,
   });
+
+  // Track rounds that have already shown the celebration modal on this device
+  const celebratedRoundsRef = useRef<Set<number>>(new Set());
 
   // Network & Connectivity state
   const [_isSocketConnected, setIsSocketConnected] = useState(false);
@@ -108,6 +113,17 @@ export default function GuestTableClient({
     roundNumber: number;
     totalInCents: number;
   } | null>(null);
+
+  // Auto-dismiss celebration screen after 4 seconds and transition to the fresh cart for the next round
+  useEffect(() => {
+    if (lastPlacedOrder) {
+      const timer = setTimeout(() => {
+        setLastPlacedOrder(null);
+        setIsReviewModalOpen(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastPlacedOrder]);
 
   // Signature Presence States (Avatar pulse & lightweight toast pill)
   const [pulsingUserId, setPulsingUserId] = useState<string | null>(null);
@@ -385,6 +401,31 @@ export default function GuestTableClient({
             setIsTableClosed(false);
           }
 
+          // Sync "Order Placed" celebration screen to every phone at the table
+          const submittedRoundNum = data.session.lastSubmittedRound;
+          const isNewlySubmittedRound =
+            submittedRoundNum !== undefined &&
+            submittedRoundNum > 0 &&
+            !celebratedRoundsRef.current.has(submittedRoundNum);
+
+          if (data.session.orderPlaced || isNewlySubmittedRound) {
+            const roundToCelebrate = submittedRoundNum || (data.session.roundNumber - 1);
+            if (roundToCelebrate > 0 && !celebratedRoundsRef.current.has(roundToCelebrate)) {
+              celebratedRoundsRef.current.add(roundToCelebrate);
+              const roundObj =
+                data.session.submittedRounds?.find((r: { roundNumber: number }) => r.roundNumber === roundToCelebrate) ||
+                data.session.submittedRounds?.[data.session.submittedRounds.length - 1];
+
+              setLastPlacedOrder({
+                orderId: roundObj?.orderId || `ord_r${roundToCelebrate}`,
+                roundNumber: roundToCelebrate,
+                totalInCents: roundObj?.roundTotalInCents || 0,
+              });
+              setIsReviewModalOpen(true);
+              showToast(`Order Placed for Round #${roundToCelebrate}! Sent to Kitchen.`, "success");
+            }
+          }
+
           setSession((prev) => {
             const isNewer = data.session.updatedAt > prev.updatedAt;
             const cartChanged = data.session.cart.length !== prev.cart.length;
@@ -412,7 +453,21 @@ export default function GuestTableClient({
 
               // If next round started and cart was emptied
               if (data.session.roundNumber > prev.roundNumber) {
-                showToast(`Round #${prev.roundNumber} sent to kitchen!`, "success");
+                const roundToCelebrate = prev.roundNumber;
+                if (!celebratedRoundsRef.current.has(roundToCelebrate)) {
+                  celebratedRoundsRef.current.add(roundToCelebrate);
+                  const roundObj =
+                    data.session.submittedRounds?.find((r: { roundNumber: number }) => r.roundNumber === roundToCelebrate) ||
+                    data.session.submittedRounds?.[data.session.submittedRounds.length - 1];
+
+                  setLastPlacedOrder({
+                    orderId: roundObj?.orderId || `ord_r${roundToCelebrate}`,
+                    roundNumber: roundToCelebrate,
+                    totalInCents: roundObj?.roundTotalInCents || 0,
+                  });
+                  setIsReviewModalOpen(true);
+                  showToast(`Order Placed for Round #${roundToCelebrate}! Sent to Kitchen.`, "success");
+                }
               }
 
               return {
@@ -519,13 +574,14 @@ export default function GuestTableClient({
       ticket?: { totalInCents: number };
     }) {
       if (data.session) setSession(data.session);
+      celebratedRoundsRef.current.add(data.roundNumber);
       setLastPlacedOrder({
         orderId: data.orderId,
         roundNumber: data.roundNumber,
         totalInCents: data.ticket?.totalInCents || 0,
       });
       setIsReviewModalOpen(true); // Open consensus celebration view
-      showToast(`Round #${data.roundNumber} sent to kitchen!`, "success");
+      showToast(`Order Placed for Round #${data.roundNumber}! Sent to Kitchen.`, "success");
     }
 
     function onTableStateSync(data: { session: TableSession }) {
@@ -610,6 +666,7 @@ export default function GuestTableClient({
       localStorage.removeItem("platesync_user_color");
       localStorage.removeItem("tablesync_user_color");
     }
+    celebratedRoundsRef.current.clear();
     setUserProfile(null);
     setIsTableClosed(false);
     setJoinedDiningSessionId(null);
@@ -625,6 +682,7 @@ export default function GuestTableClient({
     setIsOnboardingOpen(false);
 
     if (isNewCustomerGroup) {
+      celebratedRoundsRef.current.clear();
       setIsTableClosed(false);
       setJoinedDiningSessionId(null);
       joinedDiningSessionIdRef.current = null;
@@ -645,12 +703,14 @@ export default function GuestTableClient({
           },
         ],
         cart: [],
+        approvals: [],
         consensusVotes: {},
         roundNumber: 1,
         status: "IDLE",
         submittedRounds: [],
         tableGrandTotalInRupees: 0,
         tableGrandTotalInCents: 0,
+        orderPlaced: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -1072,14 +1132,21 @@ export default function GuestTableClient({
     if (!userProfile) return;
 
     // 0ms Instant optimistic vote on screen
-    setSession((prev) => ({
-      ...prev,
-      consensusVotes: {
-        ...prev.consensusVotes,
-        [userProfile.userId]: true,
-      },
-      updatedAt: Date.now(),
-    }));
+    setSession((prev) => {
+      const prevApprovals = prev.approvals || [];
+      const newApprovals = prevApprovals.includes(userProfile.userId)
+        ? prevApprovals
+        : [...prevApprovals, userProfile.userId];
+      return {
+        ...prev,
+        approvals: newApprovals,
+        consensusVotes: {
+          ...prev.consensusVotes,
+          [userProfile.userId]: true,
+        },
+        updatedAt: Date.now(),
+      };
+    });
 
     // 1. Socket.IO dispatch (background)
     const socket = getSocketClient();
@@ -1119,13 +1186,14 @@ export default function GuestTableClient({
             setSession(data.session);
           }
           if (data.status === "ORDER_SUBMITTED") {
+            celebratedRoundsRef.current.add(data.roundNumber);
             setLastPlacedOrder({
               orderId: data.orderId,
               roundNumber: data.roundNumber,
               totalInCents: data.ticket?.totalInCents || 0,
             });
             setIsReviewModalOpen(true);
-            showToast(`Round #${data.roundNumber} sent to kitchen!`, "success");
+            showToast(`Order Placed for Round #${data.roundNumber}! Sent to Kitchen.`, "success");
           }
         }
       })

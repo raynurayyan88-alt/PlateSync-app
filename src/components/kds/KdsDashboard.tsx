@@ -576,6 +576,7 @@ export default function KdsDashboard({
             tableNumber: t.tableNumber,
             users: t.approvedBy?.map((name) => ({ id: name, name })) || [],
             cart: [],
+            approvals: t.approvedBy || [],
             consensusVotes: {},
             roundNumber: t.roundNumber,
             status: "IDLE",

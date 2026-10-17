@@ -1,5 +1,7 @@
 import type Redis from "ioredis";
 import { redis as defaultRedisClient } from "../lib/redis";
+import { prisma } from "../lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const SESSION_TTL_SECONDS = 7200; // 2 hours
 
@@ -50,12 +52,15 @@ export interface TableSession {
   tableNumber: number;
   users: SessionUser[];
   cart: CartItem[];
+  approvals?: string[]; // Permanent clientUserIds who voted "Looks Good!"
   consensusVotes: Record<string, boolean>; // userId -> hasApproved
   roundNumber: number;
   status: TableStatus;
   submittedRounds: SubmittedRound[];
   tableGrandTotalInRupees: number;
   tableGrandTotalInCents: number;
+  orderPlaced?: boolean;
+  lastSubmittedRound?: number;
   billStatus?: BillStatus;
   isClosed?: boolean;
   closedAt?: string;
@@ -174,7 +179,93 @@ export class SessionStore {
   }
 
   /**
-   * Safe read from Redis with in-memory fallback (<80ms fast-fail)
+   * Persists the table session directly to PostgreSQL via Prisma to guarantee cross-lambda consistency on Vercel
+   */
+  async saveSessionToDatabase(session: TableSession): Promise<void> {
+    try {
+      const slugKey = session.restaurantSlug.trim().toLowerCase();
+      let restaurant = await prisma.restaurant.findUnique({
+        where: { slug: slugKey },
+        select: { id: true },
+      });
+
+      if (!restaurant) {
+        restaurant = await prisma.restaurant.create({
+          data: {
+            name: slugKey.replace(/-/g, " ").toUpperCase(),
+            slug: slugKey,
+          },
+          select: { id: true },
+        });
+      }
+
+      const existing = await prisma.order.findFirst({
+        where: {
+          restaurantId: restaurant.id,
+          tableNumber: session.tableNumber,
+          status: "ACTIVE_TABLE_SESSION",
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: {
+            roundNumber: session.roundNumber || 1,
+            payloadJson: session as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } else {
+        await prisma.order.create({
+          data: {
+            restaurantId: restaurant.id,
+            tableNumber: session.tableNumber,
+            roundNumber: session.roundNumber || 1,
+            status: "ACTIVE_TABLE_SESSION",
+            payloadJson: session as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn("[SessionStore] PostgreSQL save session fallback/error:", err);
+    }
+  }
+
+  /**
+   * Loads the authoritative table session from PostgreSQL
+   */
+  async loadSessionFromDatabase(
+    restaurantSlug: string,
+    tableNumber: number | string
+  ): Promise<TableSession | null> {
+    try {
+      const slugKey = restaurantSlug.trim().toLowerCase();
+      const num = Number(tableNumber);
+      if (isNaN(num)) return null;
+
+      const order = await prisma.order.findFirst({
+        where: {
+          restaurant: { slug: slugKey },
+          tableNumber: num,
+          status: "ACTIVE_TABLE_SESSION",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (order && order.payloadJson) {
+        const parsed = order.payloadJson as unknown as TableSession;
+        return parsed;
+      }
+      return null;
+    } catch (err) {
+      console.warn("[SessionStore] PostgreSQL load session fallback/error:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Safe read from Redis with PostgreSQL persistence and in-memory fallback (<80ms fast-fail)
    */
   private async readSessionRaw(sessionKey: string): Promise<string | null> {
     try {
@@ -183,28 +274,66 @@ export class SessionStore {
           this.redis.get(sessionKey),
           new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 80)),
         ]);
-        if (data) return data;
+        if (data) {
+          const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+          memoryCache.set(sessionKey, { value: data, expiresAt });
+          return data;
+        }
       }
     } catch {
-      // Redis is not connected or timed out, fall back to memoryCache instantly
+      // Redis is not connected or timed out
+    }
+
+    // Authoritative read from PostgreSQL (crucial for Vercel serverless lambdas)
+    const parts = sessionKey.split(":");
+    let dbSession: TableSession | null = null;
+    if (parts.length >= 3) {
+      try {
+        dbSession = await this.loadSessionFromDatabase(parts[1], Number(parts[2]));
+      } catch {
+        // Fallback
+      }
     }
 
     const cached = memoryCache.get(sessionKey);
+    let cachedSession: TableSession | null = null;
     if (cached) {
-      if (Date.now() > cached.expiresAt) {
+      if (Date.now() <= cached.expiresAt) {
+        try {
+          cachedSession = JSON.parse(cached.value) as TableSession;
+        } catch {
+          // Parse error
+        }
+      } else {
         memoryCache.delete(sessionKey);
-        return null;
       }
-      return cached.value;
+    }
+
+    if (dbSession && cachedSession) {
+      const dbTime = dbSession.updatedAt || 0;
+      const cachedTime = cachedSession.updatedAt || 0;
+      if (dbTime >= cachedTime) {
+        const serialized = JSON.stringify(dbSession);
+        memoryCache.set(sessionKey, { value: serialized, expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000 });
+        return serialized;
+      } else {
+        return cached!.value;
+      }
+    } else if (dbSession) {
+      const serialized = JSON.stringify(dbSession);
+      memoryCache.set(sessionKey, { value: serialized, expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000 });
+      return serialized;
+    } else if (cachedSession) {
+      return cached!.value;
     }
 
     return null;
   }
 
   /**
-   * Safe write to Redis with 7200s TTL and instant memory store
+   * Safe write to Redis with 7200s TTL, PostgreSQL persistence and instant memory store
    */
-  private async writeSessionRaw(sessionKey: string, serializedSession: string): Promise<void> {
+  async writeSessionRaw(sessionKey: string, serializedSession: string): Promise<void> {
     const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
     // Always write to fast in-memory store first
     memoryCache.set(sessionKey, { value: serializedSession, expiresAt });
@@ -220,6 +349,24 @@ export class SessionStore {
     } catch {
       // Redis offline; state remains securely in memoryCache
     }
+
+    // Persist to PostgreSQL to guarantee all Vercel serverless lambdas share identical state
+    try {
+      const parsed = JSON.parse(serializedSession) as TableSession;
+      await this.saveSessionToDatabase(parsed);
+    } catch (err) {
+      console.warn("[SessionStore] Error writing session to PostgreSQL:", err);
+    }
+  }
+
+  /**
+   * Save TableSession directly to cache and PostgreSQL
+   */
+  async saveSession(session: TableSession): Promise<TableSession> {
+    const sessionKey = buildSessionKey(session.restaurantSlug, session.tableNumber);
+    session.updatedAt = Date.now();
+    await this.writeSessionRaw(sessionKey, JSON.stringify(session));
+    return session;
   }
 
   /**
@@ -239,6 +386,17 @@ export class SessionStore {
           if (!parsed.status) parsed.status = "IDLE";
           if (!parsed.diningSessionId) parsed.diningSessionId = generateDiningSessionId();
           if (!parsed.submittedRounds) parsed.submittedRounds = [];
+          if (!parsed.approvals) {
+            parsed.approvals = Object.keys(parsed.consensusVotes || {}).filter(
+              (k) => parsed.consensusVotes[k]
+            );
+          }
+          if (!parsed.consensusVotes) {
+            parsed.consensusVotes = {};
+          }
+          for (const uid of parsed.approvals) {
+            parsed.consensusVotes[uid] = true;
+          }
           if (parsed.tableGrandTotalInRupees === undefined) {
             parsed.tableGrandTotalInRupees = parsed.submittedRounds.reduce(
               (sum, r) => sum + (r.roundTotalInRupees || 0),
@@ -263,12 +421,14 @@ export class SessionStore {
         tableNumber: Number(tableNumber),
         users: [],
         cart: [],
+        approvals: [],
         consensusVotes: {},
         roundNumber: 1,
         status: "IDLE",
         submittedRounds: [],
         tableGrandTotalInRupees: 0,
         tableGrandTotalInCents: 0,
+        orderPlaced: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -288,7 +448,7 @@ export class SessionStore {
   }
 
   /**
-   * Add a user to the session (idempotent; updates user if already present)
+   * Add a user to the session (idempotent; updates user if already present, deduplicating by permanent clientUserId)
    */
   async addUser(sessionKey: string, userObj: SessionUser): Promise<TableSession> {
     return this.withLock(sessionKey, async () => {
@@ -320,6 +480,18 @@ export class SessionStore {
         session.users.push(userToSave);
       }
 
+      // Deduplicate active users strictly by permanent clientUserId
+      const uniqueUsers: SessionUser[] = [];
+      const seenIds = new Set<string>();
+      for (const u of session.users) {
+        if (u.id && !seenIds.has(u.id)) {
+          seenIds.add(u.id);
+          uniqueUsers.push(u);
+        }
+      }
+      session.users = uniqueUsers;
+
+      if (!session.approvals) session.approvals = [];
       session.updatedAt = Date.now();
       await this.writeSessionRaw(sessionKey, JSON.stringify(session));
       return session;
@@ -327,7 +499,7 @@ export class SessionStore {
   }
 
   /**
-   * Remove a user from the session and delete their vote
+   * Remove a user from the session and delete their vote and approval
    */
   async removeUser(sessionKey: string, userId: string): Promise<TableSession> {
     return this.withLock(sessionKey, async () => {
@@ -337,6 +509,7 @@ export class SessionStore {
       }
 
       session.users = session.users.filter((u) => u.id !== userId);
+      session.approvals = (session.approvals || []).filter((id) => id !== userId);
       delete session.consensusVotes[userId];
       session.updatedAt = Date.now();
 
@@ -388,6 +561,8 @@ export class SessionStore {
       }
 
       session.consensusVotes = {}; // Invalidate votes on cart mutation
+      session.approvals = [];
+      session.orderPlaced = false;
       session.updatedAt = Date.now();
 
       await this.writeSessionRaw(sessionKey, JSON.stringify(session));
@@ -432,6 +607,8 @@ export class SessionStore {
 
       session.cart.splice(itemIndex, 1);
       session.consensusVotes = {}; // Invalidate votes on cart mutation
+      session.approvals = [];
+      session.orderPlaced = false;
       session.updatedAt = Date.now();
 
       await this.writeSessionRaw(sessionKey, JSON.stringify(session));
@@ -453,7 +630,19 @@ export class SessionStore {
         throw new Error(`Session not found for key: ${sessionKey}`);
       }
 
-      session.consensusVotes[userId] = hasApproved;
+      if (!session.approvals) session.approvals = [];
+      if (!session.consensusVotes) session.consensusVotes = {};
+
+      if (hasApproved) {
+        if (!session.approvals.includes(userId)) {
+          session.approvals.push(userId);
+        }
+        session.consensusVotes[userId] = true;
+      } else {
+        session.approvals = session.approvals.filter((id) => id !== userId);
+        delete session.consensusVotes[userId];
+      }
+
       session.updatedAt = Date.now();
 
       await this.writeSessionRaw(sessionKey, JSON.stringify(session));
@@ -484,10 +673,13 @@ export class SessionStore {
         (sum, r) => sum + (r.roundTotalInCents || 0),
         0
       );
+      session.lastSubmittedRound = submittedRound.roundNumber;
+      session.orderPlaced = true;
     }
 
     session.cart = [];
     session.consensusVotes = {};
+    session.approvals = [];
     session.roundNumber = (session.roundNumber || 1) + 1;
     session.status = "IDLE";
     session.updatedAt = Date.now();
@@ -539,12 +731,14 @@ export class SessionStore {
       tableNumber: session.tableNumber,
       users: [],
       cart: [],
+      approvals: [],
       consensusVotes: {},
       roundNumber: 1,
       status: "IDLE",
       submittedRounds: [],
       tableGrandTotalInRupees: 0,
       tableGrandTotalInCents: 0,
+      orderPlaced: false,
       isClosed: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -687,12 +881,14 @@ export class SessionStore {
       tableNumber: session.tableNumber,
       users: [],
       cart: [],
+      approvals: [],
       consensusVotes: {},
       roundNumber: 1,
       status: "IDLE",
       submittedRounds: [],
       tableGrandTotalInRupees: 0,
       tableGrandTotalInCents: 0,
+      orderPlaced: false,
       isClosed: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -895,6 +1091,9 @@ export const getCompletedBills = (restaurantSlug: string): CashierBill[] =>
 
 export const setSessionStatus = (sessionKey: string, status: TableStatus) =>
   sessionStore.setSessionStatus(sessionKey, status);
+
+export const saveSession = (session: TableSession) =>
+  sessionStore.saveSession(session);
 
 export default sessionStore;
 
