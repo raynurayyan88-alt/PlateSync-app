@@ -178,57 +178,78 @@ export class SessionStore {
     }
   }
 
+  private isDbTemporarilyUnavailable(): boolean {
+    const globalState = globalThis as unknown as { __tablesync_dbOfflineUntil?: number };
+    return Boolean(globalState.__tablesync_dbOfflineUntil && Date.now() < globalState.__tablesync_dbOfflineUntil);
+  }
+
+  private markDbTemporarilyOffline(): void {
+    const globalState = globalThis as unknown as { __tablesync_dbOfflineUntil?: number };
+    globalState.__tablesync_dbOfflineUntil = Date.now() + 15000; // 15 seconds fast fallback
+  }
+
   /**
    * Persists the table session directly to PostgreSQL via Prisma to guarantee cross-lambda consistency on Vercel
    */
   async saveSessionToDatabase(session: TableSession): Promise<void> {
-    try {
-      const slugKey = session.restaurantSlug.trim().toLowerCase();
-      let restaurant = await prisma.restaurant.findUnique({
-        where: { slug: slugKey },
-        select: { id: true },
-      });
+    if (this.isDbTemporarilyUnavailable()) return;
 
-      if (!restaurant) {
-        restaurant = await prisma.restaurant.create({
-          data: {
-            name: slugKey.replace(/-/g, " ").toUpperCase(),
-            slug: slugKey,
+    try {
+      const op = async () => {
+        const slugKey = session.restaurantSlug.trim().toLowerCase();
+        let restaurant = await prisma.restaurant.findUnique({
+          where: { slug: slugKey },
+          select: { id: true },
+        });
+
+        if (!restaurant) {
+          restaurant = await prisma.restaurant.create({
+            data: {
+              name: slugKey.replace(/-/g, " ").toUpperCase(),
+              slug: slugKey,
+            },
+            select: { id: true },
+          });
+        }
+
+        const existing = await prisma.order.findFirst({
+          where: {
+            restaurantId: restaurant.id,
+            tableNumber: session.tableNumber,
+            status: "ACTIVE_TABLE_SESSION",
           },
           select: { id: true },
         });
-      }
 
-      const existing = await prisma.order.findFirst({
-        where: {
-          restaurantId: restaurant.id,
-          tableNumber: session.tableNumber,
-          status: "ACTIVE_TABLE_SESSION",
-        },
-        select: { id: true },
-      });
+        if (existing) {
+          await prisma.order.update({
+            where: { id: existing.id },
+            data: {
+              roundNumber: session.roundNumber || 1,
+              payloadJson: session as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } else {
+          await prisma.order.create({
+            data: {
+              restaurantId: restaurant.id,
+              tableNumber: session.tableNumber,
+              roundNumber: session.roundNumber || 1,
+              status: "ACTIVE_TABLE_SESSION",
+              payloadJson: session as unknown as Prisma.InputJsonValue,
+            },
+          });
+        }
+      };
 
-      if (existing) {
-        await prisma.order.update({
-          where: { id: existing.id },
-          data: {
-            roundNumber: session.roundNumber || 1,
-            payloadJson: session as unknown as Prisma.InputJsonValue,
-          },
-        });
-      } else {
-        await prisma.order.create({
-          data: {
-            restaurantId: restaurant.id,
-            tableNumber: session.tableNumber,
-            roundNumber: session.roundNumber || 1,
-            status: "ACTIVE_TABLE_SESSION",
-            payloadJson: session as unknown as Prisma.InputJsonValue,
-          },
-        });
-      }
-    } catch (err) {
-      console.warn("[SessionStore] PostgreSQL save session fallback/error:", err);
+      await Promise.race([
+        op(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("DB save timeout")), 120)
+        ),
+      ]);
+    } catch {
+      this.markDbTemporarilyOffline();
     }
   }
 
@@ -239,27 +260,37 @@ export class SessionStore {
     restaurantSlug: string,
     tableNumber: number | string
   ): Promise<TableSession | null> {
+    if (this.isDbTemporarilyUnavailable()) return null;
+
     try {
       const slugKey = restaurantSlug.trim().toLowerCase();
       const num = Number(tableNumber);
       if (isNaN(num)) return null;
 
-      const order = await prisma.order.findFirst({
-        where: {
-          restaurant: { slug: slugKey },
-          tableNumber: num,
-          status: "ACTIVE_TABLE_SESSION",
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      const op = async () => {
+        return prisma.order.findFirst({
+          where: {
+            restaurant: { slug: slugKey },
+            tableNumber: num,
+            status: "ACTIVE_TABLE_SESSION",
+          },
+          orderBy: { createdAt: "desc" },
+        });
+      };
+
+      const order = await Promise.race([
+        op(),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("DB load timeout")), 100)
+        ),
+      ]);
 
       if (order && order.payloadJson) {
-        const parsed = order.payloadJson as unknown as TableSession;
-        return parsed;
+        return order.payloadJson as unknown as TableSession;
       }
       return null;
-    } catch (err) {
-      console.warn("[SessionStore] PostgreSQL load session fallback/error:", err);
+    } catch {
+      this.markDbTemporarilyOffline();
       return null;
     }
   }
