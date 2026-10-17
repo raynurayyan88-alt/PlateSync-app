@@ -688,6 +688,24 @@ async function getPrisma() {
   }
 }
 
+// Safe database operation with 120ms fast-fail
+async function safeDbOp<T>(
+  op: (prismaClient: NonNullable<Awaited<ReturnType<typeof getPrisma>>>) => Promise<T>
+): Promise<T | null> {
+  try {
+    const prisma = await getPrisma();
+    if (!prisma) return null;
+    return await Promise.race([
+      op(prisma),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("DB operation timed out")), 120)
+      ),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetch restaurant menu with dynamic categories and dishes (Instant In-Memory Cache + 80ms Fast-Fail)
  */
@@ -893,29 +911,24 @@ export async function addCategory(
   runtimeMenuStore.set(normalizedSlug, current);
 
   // DB persistence if available
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      let restaurant = await prisma.restaurant.findUnique({ where: { slug: normalizedSlug } });
-      if (!restaurant) {
-        restaurant = await prisma.restaurant.create({
-          data: { name: current.restaurant.name, slug: normalizedSlug },
-        });
-      }
-      const dbCat = await prisma.menuCategory.create({
-        data: {
-          id: newCat.id,
-          restaurantId: restaurant.id,
-          name: newCat.name,
-          sortOrder: newCat.sortOrder,
-          isActive: true,
-        },
+  await safeDbOp(async (prisma) => {
+    let restaurant = await prisma.restaurant.findUnique({ where: { slug: normalizedSlug } });
+    if (!restaurant) {
+      restaurant = await prisma.restaurant.create({
+        data: { name: current.restaurant.name, slug: normalizedSlug },
       });
-      newCat.id = dbCat.id;
     }
-  } catch {
-    // DB offline fallback
-  }
+    const dbCat = await prisma.menuCategory.create({
+      data: {
+        id: newCat.id,
+        restaurantId: restaurant.id,
+        name: newCat.name,
+        sortOrder: newCat.sortOrder,
+        isActive: true,
+      },
+    });
+    newCat.id = dbCat.id;
+  });
 
   return newCat;
 }
@@ -968,21 +981,16 @@ export async function updateCategory(
   current.categories.sort((a, b) => a.sortOrder - b.sortOrder);
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      await prisma.menuCategory.update({
-        where: { id: categoryId },
-        data: {
-          ...(data.name ? { name: data.name.trim() } : {}),
-          ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
-          ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
-        },
-      });
-    }
-  } catch {
-    // DB offline fallback
-  }
+  await safeDbOp(async (prisma) => {
+    await prisma.menuCategory.update({
+      where: { id: categoryId },
+      data: {
+        ...(data.name ? { name: data.name.trim() } : {}),
+        ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      },
+    });
+  });
 
   return cat;
 }
@@ -1045,14 +1053,9 @@ export async function deleteCategory(slug: string, categoryId: string): Promise<
 
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      await prisma.menuCategory.delete({ where: { id: categoryId } });
-    }
-  } catch {
-    // DB offline fallback
-  }
+  await safeDbOp(async (prisma) => {
+    await prisma.menuCategory.delete({ where: { id: categoryId } });
+  });
 
   return true;
 }
@@ -1136,35 +1139,30 @@ export async function addDish(
   current.menuItems.unshift(newDish);
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      let restaurant = await prisma.restaurant.findUnique({ where: { slug: normalizedSlug } });
-      if (!restaurant) {
-        restaurant = await prisma.restaurant.create({
-          data: { name: current.restaurant.name, slug: normalizedSlug },
-        });
-      }
-
-      await prisma.menuItem.create({
-        data: {
-          id: newDish.id,
-          restaurantId: restaurant.id,
-          categoryId: targetCatId,
-          name: newDish.name,
-          description: newDish.description,
-          imageUrl: newDish.imageUrl,
-          priceInRupees: newDish.priceInRupees,
-          priceInCents: newDish.priceInRupees,
-          dietaryType: newDish.dietaryType,
-          isAvailable: newDish.isAvailable,
-          modifiers: newDish.modifiers as unknown as JsonModifierValue,
-        },
+  await safeDbOp(async (prisma) => {
+    let restaurant = await prisma.restaurant.findUnique({ where: { slug: normalizedSlug } });
+    if (!restaurant) {
+      restaurant = await prisma.restaurant.create({
+        data: { name: current.restaurant.name, slug: normalizedSlug },
       });
     }
-  } catch {
-    // DB offline fallback
-  }
+
+    await prisma.menuItem.create({
+      data: {
+        id: newDish.id,
+        restaurantId: restaurant.id,
+        categoryId: targetCatId,
+        name: newDish.name,
+        description: newDish.description,
+        imageUrl: newDish.imageUrl,
+        priceInRupees: newDish.priceInRupees,
+        priceInCents: newDish.priceInRupees,
+        dietaryType: newDish.dietaryType,
+        isAvailable: newDish.isAvailable,
+        modifiers: newDish.modifiers as unknown as JsonModifierValue,
+      },
+    });
+  });
 
   return newDish;
 }
@@ -1218,34 +1216,29 @@ export async function updateDish(
 
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      await prisma.menuItem.update({
-        where: { id: dishId },
-        data: {
-          ...(data.name ? { name: data.name.trim() } : {}),
-          ...(data.description !== undefined
-            ? { description: data.description ? data.description.trim() : null }
-            : {}),
-          ...(data.imageUrl !== undefined
-            ? { imageUrl: data.imageUrl ? data.imageUrl.trim() : null }
-            : {}),
-          ...(data.priceInRupees !== undefined
-            ? { priceInRupees: data.priceInRupees, priceInCents: data.priceInRupees }
-            : {}),
-          ...(data.dietaryType ? { dietaryType: data.dietaryType } : {}),
-          ...(data.isAvailable !== undefined ? { isAvailable: data.isAvailable } : {}),
-          ...(data.categoryId ? { categoryId: data.categoryId } : {}),
-          ...(data.modifiers
-            ? { modifiers: dish.modifiers as unknown as JsonModifierValue }
-            : {}),
-        },
-      });
-    }
-  } catch {
-    // DB offline fallback
-  }
+  await safeDbOp(async (prisma) => {
+    await prisma.menuItem.update({
+      where: { id: dishId },
+      data: {
+        ...(data.name ? { name: data.name.trim() } : {}),
+        ...(data.description !== undefined
+          ? { description: data.description ? data.description.trim() : null }
+          : {}),
+        ...(data.imageUrl !== undefined
+          ? { imageUrl: data.imageUrl ? data.imageUrl.trim() : null }
+          : {}),
+        ...(data.priceInRupees !== undefined
+          ? { priceInRupees: data.priceInRupees, priceInCents: data.priceInRupees }
+          : {}),
+        ...(data.dietaryType ? { dietaryType: data.dietaryType } : {}),
+        ...(data.isAvailable !== undefined ? { isAvailable: data.isAvailable } : {}),
+        ...(data.categoryId ? { categoryId: data.categoryId } : {}),
+        ...(data.modifiers
+          ? { modifiers: dish.modifiers as unknown as JsonModifierValue }
+          : {}),
+      },
+    });
+  });
 
   return dish;
 }
@@ -1266,17 +1259,12 @@ export async function toggleDishAvailability(
   dish.isAvailable = isAvailable !== undefined ? isAvailable : !dish.isAvailable;
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      await prisma.menuItem.update({
-        where: { id: dishId },
-        data: { isAvailable: dish.isAvailable },
-      });
-    }
-  } catch {
-    // DB offline fallback
-  }
+  await safeDbOp(async (prisma) => {
+    await prisma.menuItem.update({
+      where: { id: dishId },
+      data: { isAvailable: dish.isAvailable },
+    });
+  });
 
   return dish.isAvailable;
 }
@@ -1293,14 +1281,9 @@ export async function deleteDish(slug: string, dishId: string): Promise<boolean>
   current.menuItems.splice(idx, 1);
   runtimeMenuStore.set(normalizedSlug, current);
 
-  try {
-    const prisma = await getPrisma();
-    if (prisma) {
-      await prisma.menuItem.delete({ where: { id: dishId } });
-    }
-  } catch {
-    // DB offline fallback
-  }
+  await safeDbOp(async (prisma) => {
+    await prisma.menuItem.delete({ where: { id: dishId } });
+  });
 
   return true;
 }

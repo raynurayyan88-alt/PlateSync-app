@@ -37,8 +37,9 @@ export default function TableQrGenerator({
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedUrlTable, setCopiedUrlTable] = useState<number | null>(null);
 
-  // Browser origin defaults to window.location.origin (e.g. *.trycloudflare.com)
-  const currentBrowserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  // Browser origin defaults to window.location.origin, with environment or domain fallback
+  const fallbackOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://tablesync.in";
+  const currentBrowserOrigin = typeof window !== "undefined" && window.location.origin ? window.location.origin : fallbackOrigin;
   const effectiveOrigin = (customOrigin.trim() || currentBrowserOrigin).replace(/\/+$/, "");
 
   // Generate QR codes (vector SVG and high-res PNG) for all tables
@@ -46,7 +47,7 @@ export default function TableQrGenerator({
     let isCancelled = false;
 
     async function generateQRCodes() {
-      const origin = (customOrigin.trim() || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/+$/, "");
+      const origin = (customOrigin.trim() || (typeof window !== "undefined" && window.location.origin ? window.location.origin : fallbackOrigin)).replace(/\/+$/, "");
       if (!origin) return;
       setIsGenerating(true);
 

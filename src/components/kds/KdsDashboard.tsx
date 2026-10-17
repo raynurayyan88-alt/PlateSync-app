@@ -95,13 +95,17 @@ export default function KdsDashboard({
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // Fetch initial data via API on mount + 2.5s continuous polling backup
+  // Fetch initial data via API on mount + 2.0s fast polling backup for Vercel serverless
   useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
       try {
-        const res = await fetch(`/api/kds/${encodeURIComponent(restaurantSlug)}`);
+        const syncUrl = `/api/kds/sync?slug=${encodeURIComponent(restaurantSlug)}`;
+        let res = await fetch(syncUrl);
+        if (!res.ok) {
+          res = await fetch(`/api/kds/${encodeURIComponent(restaurantSlug)}`);
+        }
         if (res.ok) {
           const data = await res.json();
           if (data.success && isMounted) {
@@ -142,7 +146,7 @@ export default function KdsDashboard({
     }
 
     loadData();
-    const interval = setInterval(loadData, 2500);
+    const interval = setInterval(loadData, 2000);
 
     return () => {
       isMounted = false;
@@ -526,7 +530,9 @@ export default function KdsDashboard({
 
   // Categorize active cooking tickets vs served tickets
   const activeTickets = useMemo(() => {
-    return tickets.filter((t) => t.status === "CONFIRMED");
+    return tickets.filter(
+      (t) => t.status === "SENT_TO_KITCHEN" || t.status === "CONFIRMED" || t.status === "COOKING"
+    );
   }, [tickets]);
 
   const servedTickets = useMemo(() => {

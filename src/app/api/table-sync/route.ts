@@ -68,8 +68,19 @@ export async function POST(request: NextRequest) {
     const slugKey = restaurantSlug.trim().toLowerCase();
 
     switch (action) {
-      case "join": {
-        const user = body.user as SessionUser;
+      case "join":
+      case "JOIN": {
+        const user =
+          (body.user as SessionUser) ||
+          (body.userId
+            ? {
+                id: body.userId,
+                name: body.userName || body.userId,
+                color: body.color,
+                avatar: body.avatar,
+              }
+            : null);
+
         if (!user || !user.id || !user.name) {
           return NextResponse.json(
             { success: false, error: "User object with id and name is required" },
@@ -81,7 +92,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, session });
       }
 
-      case "addItem": {
+      case "addItem":
+      case "ADD_ITEM": {
         const item = body.item as CartItem;
         if (!item || !item.name) {
           return NextResponse.json(
@@ -94,9 +106,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, session });
       }
 
-      case "removeItem": {
+      case "removeItem":
+      case "REMOVE_ITEM": {
         const cartItemId = body.cartItemId as string;
-        const userId = body.userId as string;
+        const userId = (body.userId || body.clientUserId) as string;
         if (!cartItemId || !userId) {
           return NextResponse.json(
             { success: false, error: "cartItemId and userId are required" },
@@ -107,14 +120,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, session });
       }
 
-      case "triggerReview": {
+      case "triggerReview":
+      case "TRIGGER_REVIEW": {
         await sessionStore.getOrCreateSession(restaurantSlug, tableNumber);
         const session = await sessionStore.setSessionStatus(sessionKey, "REVIEWING");
         return NextResponse.json({ success: true, session });
       }
 
-      case "submitApproval": {
-        const userId = body.userId as string;
+      case "submitApproval":
+      case "SUBMIT_APPROVAL": {
+        const userId = (body.userId || body.clientUserId) as string;
         const hasApproved = body.hasApproved !== undefined ? Boolean(body.hasApproved) : true;
 
         if (!userId) {
@@ -203,6 +218,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: true,
             status: "ORDER_SUBMITTED",
+            orderPlaced: true,
             orderId: dbOrder.orderId,
             roundNumber: completedRound,
             nextRoundNumber: nextSession.roundNumber,
