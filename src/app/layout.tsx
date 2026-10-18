@@ -13,8 +13,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const getBaseUrl = (): URL => {
+  const raw = process.env.NEXT_PUBLIC_APP_URL || "https://www.platesync.in";
+  // Strip any accidental markdown brackets or spaces
+  const clean = raw.replace(/[\[\]\(\)]/g, "").trim();
+  try {
+    return new URL(clean.startsWith("http") ? clean : `https://${clean}`);
+  } catch {
+    return new URL("https://www.platesync.in");
+  }
+};
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://tablesync.in"),
+  metadataBase: getBaseUrl(),
   title: {
     default: "TableSync | Multiplayer QR Menu Software & KDS for Restaurants in India",
     template: "%s | TableSync",
