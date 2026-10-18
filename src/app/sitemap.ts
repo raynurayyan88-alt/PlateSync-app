@@ -26,6 +26,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
+  if (!process.env.DATABASE_URL) {
+    return standardRoutes;
+  }
+
   try {
     // Fast-fail DB check within 100ms to guarantee zero build delays on Vercel / Render
     const restaurants = await Promise.race([

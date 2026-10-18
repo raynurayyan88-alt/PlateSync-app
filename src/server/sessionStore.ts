@@ -179,6 +179,7 @@ export class SessionStore {
   }
 
   private isDbTemporarilyUnavailable(): boolean {
+    if (!process.env.DATABASE_URL) return true;
     const globalState = globalThis as unknown as { __tablesync_dbOfflineUntil?: number };
     return Boolean(globalState.__tablesync_dbOfflineUntil && Date.now() < globalState.__tablesync_dbOfflineUntil);
   }

@@ -680,6 +680,7 @@ export function optimizeDishImageUrl(url?: string | null): string | null {
 // Safe server-only lazy loader for Prisma (Prevents bundling into client components)
 async function getPrisma() {
   if (typeof window !== "undefined") return null;
+  if (!process.env.DATABASE_URL) return null;
   try {
     const mod = await import("./prisma");
     return mod.prisma;

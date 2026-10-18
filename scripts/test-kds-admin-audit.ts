@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
 import { GET as kdsSyncGet, POST as kdsSyncPost } from "../src/app/api/kds/sync/route";
-import { GET as adminGet, POST as adminPost } from "../src/app/api/admin/[slug]/route";
+import { POST as adminPost } from "../src/app/api/admin/[slug]/route";
 import { POST as tableSyncPost } from "../src/app/api/table-sync/route";
 import {
   sessionStore,
   buildSessionKey,
-  pendingBillsBuffer,
   completedBillsBuffer,
 } from "../src/server/sessionStore";
 import { kdsOrdersBuffer } from "../src/server/socketHandlers";
@@ -92,15 +91,6 @@ async function callKdsSyncPost(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
   const res = await kdsSyncPost(req);
-  const data = await res.json();
-  return { status: res.status, data };
-}
-
-async function callAdminGet(slug: string) {
-  const req = new NextRequest(`http://localhost:3000/api/admin/${encodeURIComponent(slug)}`, {
-    method: "GET",
-  });
-  const res = await adminGet(req, { params: Promise.resolve({ slug }) });
   const data = await res.json();
   return { status: res.status, data };
 }

@@ -101,7 +101,7 @@ export default function TableQrGenerator({
     return () => {
       isCancelled = true;
     };
-  }, [tableCount, customOrigin, restaurantSlug]);
+  }, [tableCount, customOrigin, restaurantSlug, fallbackOrigin]);
 
   // Trigger print dialog
   const handlePrint = () => {

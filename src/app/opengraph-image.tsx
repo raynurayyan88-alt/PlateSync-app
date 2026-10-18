@@ -34,7 +34,6 @@ export default async function Image() {
             height: "400px",
             borderRadius: "9999px",
             backgroundColor: "rgba(234, 88, 12, 0.15)",
-            filter: "blur(90px)",
           }}
         />
 
@@ -45,7 +44,6 @@ export default async function Image() {
             alignItems: "center",
             justifyContent: "space-between",
             width: "100%",
-            zIndex: 10,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
@@ -129,7 +127,6 @@ export default async function Image() {
             alignItems: "center",
             textAlign: "center",
             maxWidth: "1040px",
-            zIndex: 10,
           }}
         >
           <div
@@ -165,7 +162,6 @@ export default async function Image() {
             alignItems: "center",
             justifyContent: "space-between",
             width: "100%",
-            zIndex: 10,
             borderTop: "1px solid rgba(255, 255, 255, 0.12)",
             paddingTop: "24px",
           }}

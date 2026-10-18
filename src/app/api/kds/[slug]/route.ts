@@ -22,51 +22,53 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     let dbTickets: KdsTicket[] = [];
 
-    try {
-      const dbFetch = async () => {
-        const restaurant = await prisma.restaurant.findUnique({
-          where: { slug: slugKey },
-        });
-
-        if (restaurant) {
-          const dbOrders = await prisma.order.findMany({
-            where: {
-              restaurantId: restaurant.id,
-              status: { not: "ACTIVE_TABLE_SESSION" },
-            },
-            orderBy: { createdAt: "desc" },
-            take: 100,
+    if (process.env.DATABASE_URL) {
+      try {
+        const dbFetch = async () => {
+          const restaurant = await prisma.restaurant.findUnique({
+            where: { slug: slugKey },
           });
 
-          return dbOrders.map((o) => {
-            const payloadData = (o.payloadJson as Record<string, unknown>) || {};
-            return {
-              orderId: o.id,
-              diningSessionId: payloadData.diningSessionId as string | undefined,
-              restaurantSlug: slugKey,
-              tableNumber: o.tableNumber,
-              roundNumber: o.roundNumber,
-              status: o.status,
-              totalInCents: (payloadData.totalInCents as number) || 0,
-              items: (payloadData.items as CartItem[]) || [],
-              placedAt: (payloadData.placedAt as string) || o.createdAt.toISOString(),
-              completedAt: payloadData.completedAt as string | undefined,
-              approvedBy: (payloadData.approvedBy as string[]) || [],
-            };
-          });
-        }
-        return [];
-      };
+          if (restaurant) {
+            const dbOrders = await prisma.order.findMany({
+              where: {
+                restaurantId: restaurant.id,
+                status: { not: "ACTIVE_TABLE_SESSION" },
+              },
+              orderBy: { createdAt: "desc" },
+              take: 100,
+            });
 
-      dbTickets = await Promise.race([
-        dbFetch(),
-        new Promise<KdsTicket[]>((_, reject) =>
-          setTimeout(() => reject(new Error("KDS DB timeout")), 100)
-        ),
-      ]);
-    } catch {
-      // DB offline or slow fallback: rely instantly on fast-sync memory buffer
-      dbTickets = [];
+            return dbOrders.map((o) => {
+              const payloadData = (o.payloadJson as Record<string, unknown>) || {};
+              return {
+                orderId: o.id,
+                diningSessionId: payloadData.diningSessionId as string | undefined,
+                restaurantSlug: slugKey,
+                tableNumber: o.tableNumber,
+                roundNumber: o.roundNumber,
+                status: o.status,
+                totalInCents: (payloadData.totalInCents as number) || 0,
+                items: (payloadData.items as CartItem[]) || [],
+                placedAt: (payloadData.placedAt as string) || o.createdAt.toISOString(),
+                completedAt: payloadData.completedAt as string | undefined,
+                approvedBy: (payloadData.approvedBy as string[]) || [],
+              };
+            });
+          }
+          return [];
+        };
+
+        dbTickets = await Promise.race([
+          dbFetch(),
+          new Promise<KdsTicket[]>((_, reject) =>
+            setTimeout(() => reject(new Error("KDS DB timeout")), 100)
+          ),
+        ]);
+      } catch {
+        // DB offline or slow fallback: rely instantly on fast-sync memory buffer
+        dbTickets = [];
+      }
     }
 
     // Merge with fast-sync in-memory buffer

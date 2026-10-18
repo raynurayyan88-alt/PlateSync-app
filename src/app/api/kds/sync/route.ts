@@ -24,9 +24,10 @@ export async function GET(request: NextRequest) {
     const slugKey = slug.trim().toLowerCase();
     let dbTickets: KdsTicket[] = [];
 
-    try {
-      const dbFetch = async () => {
-        const restaurant = await prisma.restaurant.findUnique({
+    if (process.env.DATABASE_URL) {
+      try {
+        const dbFetch = async () => {
+          const restaurant = await prisma.restaurant.findUnique({
           where: { slug: slugKey },
         });
 
@@ -66,9 +67,10 @@ export async function GET(request: NextRequest) {
           setTimeout(() => reject(new Error("KDS DB timeout")), 100)
         ),
       ]);
-    } catch {
-      // DB offline or slow fallback: rely instantly on fast-sync memory buffer
-      dbTickets = [];
+      } catch {
+        // DB offline or slow fallback: rely instantly on fast-sync memory buffer
+        dbTickets = [];
+      }
     }
 
     // Merge with fast-sync in-memory buffer
