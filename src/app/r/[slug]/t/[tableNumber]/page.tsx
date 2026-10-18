@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .join(" ");
 
   return {
-    title: `Table ${num} - ${formattedSlug} | TableSync Live Menu`,
+    title: `Table ${num} - ${formattedSlug} | PlateSync Live Menu`,
     description: `Scan & order collaboratively with your dining party at Table ${num} at ${formattedSlug}. Real-time shared cart, consensus voting, and instant kitchen routing.`,
     alternates: {
       canonical: `/r/${slug}/t/${tableNumber}`,

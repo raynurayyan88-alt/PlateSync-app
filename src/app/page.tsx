@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import HomePageClient from "@/components/home/HomePageClient";
 
 export const metadata: Metadata = {
-  title: "TableSync | Multiplayer QR Menu Software & KDS for Restaurants in India",
+  title: "PlateSync | Multiplayer QR Menu Software & KDS for Restaurants in India",
   description:
-    "Transform your restaurant with TableSync: India's premier multiplayer QR table ordering app and real-time Kitchen Display System (KDS). Group diners order together with live sync, round consensus, and counter cashier billing across Kerala and India.",
+    "Transform your restaurant with PlateSync: India's premier multiplayer QR table ordering app and real-time Kitchen Display System (KDS). Group diners order together with live sync, round consensus, and counter cashier billing across Kerala and India.",
   keywords: [
     "QR menu software India",
     "multiplayer table ordering app",
@@ -16,18 +16,18 @@ export const metadata: Metadata = {
     "collaborative group dining QR",
     "digital restaurant menu card",
     "restaurant table management software",
-    "TableSync India",
+    "PlateSync India",
     "PlateSync",
   ],
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "TableSync | Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
+    title: "PlateSync | Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
     description:
       "India's leading collaborative QR ordering app & real-time KDS. Group diners add dishes in real time, approve rounds together, and settle bills seamlessly.",
     url: "/",
-    siteName: "TableSync India",
+    siteName: "PlateSync India",
     locale: "en_IN",
     type: "website",
     images: [
@@ -35,13 +35,13 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "TableSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
+        alt: "PlateSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "TableSync | Multiplayer QR Menu & KDS for Restaurants in India",
+    title: "PlateSync | Multiplayer QR Menu & KDS for Restaurants in India",
     description:
       "Multiplayer table ordering app & real-time KDS for restaurants, cafes, and hotels across India.",
     images: ["/opengraph-image"],
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://tablesync.in";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.platesync.in";
 
   const structuredData = {
     "@context": "https://schema.org",
@@ -57,7 +57,7 @@ export default function Page() {
       {
         "@type": "Organization",
         "@id": `${baseUrl}/#organization`,
-        name: "TableSync India",
+        name: "PlateSync India",
         url: baseUrl,
         logo: `${baseUrl}/icon.svg`,
         description:
@@ -70,7 +70,7 @@ export default function Page() {
         contactPoint: {
           "@type": "ContactPoint",
           contactType: "customer support",
-          email: "support@tablesync.in",
+          email: "mohdrayyan@platesync.in",
           areaServed: "IN",
           availableLanguage: ["English", "Hindi", "Malayalam"],
         },
@@ -78,7 +78,7 @@ export default function Page() {
       {
         "@type": "SoftwareApplication",
         "@id": `${baseUrl}/#software`,
-        name: "TableSync",
+        name: "PlateSync",
         operatingSystem: "All modern web browsers (iOS Safari, Android Chrome, Windows, macOS)",
         applicationCategory: "BusinessApplication",
         applicationSubCategory: "RestaurantManagementApplication",
@@ -170,7 +170,7 @@ export default function Page() {
         "@type": "WebSite",
         "@id": `${baseUrl}/#website`,
         url: baseUrl,
-        name: "TableSync",
+        name: "PlateSync",
         description: "Multiplayer QR Menu Software & Kitchen Display System for Indian Restaurants",
         publisher: {
           "@id": `${baseUrl}/#organization`,

@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "TableSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants";
+export const alt = "PlateSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants";
 export const size = {
   width: 1200,
   height: 630,
@@ -71,7 +71,7 @@ export default async function Image() {
                   letterSpacing: "-1px",
                 }}
               >
-                TableSync
+                PlateSync
               </span>
               <span
                 style={{
@@ -216,7 +216,7 @@ export default async function Image() {
               letterSpacing: "0.5px",
             }}
           >
-            tablesync.in
+            platesync.in
           </div>
         </div>
       </div>

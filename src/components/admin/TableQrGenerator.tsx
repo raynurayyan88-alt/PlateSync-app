@@ -38,7 +38,7 @@ export default function TableQrGenerator({
   const [copiedUrlTable, setCopiedUrlTable] = useState<number | null>(null);
 
   // Browser origin defaults to window.location.origin, with environment or domain fallback
-  const fallbackOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://tablesync.in";
+  const fallbackOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://www.platesync.in";
   const currentBrowserOrigin = typeof window !== "undefined" && window.location.origin ? window.location.origin : fallbackOrigin;
   const effectiveOrigin = (customOrigin.trim() || currentBrowserOrigin).replace(/\/+$/, "");
 

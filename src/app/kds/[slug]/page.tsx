@@ -10,7 +10,7 @@ interface PageProps {
 }
 
 export const metadata: Metadata = {
-  title: "Kitchen Display System | TableSync",
+  title: "Kitchen Display System | PlateSync",
   description: "Real-time Kitchen Display System for restaurant kitchen staff",
   robots: {
     index: false,

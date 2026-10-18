@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TableSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
-    short_name: "TableSync",
+    name: "PlateSync - Multiplayer Table Ordering",
+    short_name: "PlateSync",
     description: "Real-time multiplayer table dining and Kitchen Display System for restaurants in India.",
     start_url: "/",
     display: "standalone",

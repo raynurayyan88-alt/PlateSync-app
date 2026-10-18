@@ -29,8 +29,8 @@ const getBaseUrl = (): URL => {
 export const metadata: Metadata = {
   metadataBase: getBaseUrl(),
   title: {
-    default: "TableSync | Multiplayer QR Menu Software & KDS for Restaurants in India",
-    template: "%s | TableSync",
+    default: "PlateSync | Multiplayer QR Menu Software & KDS for Restaurants in India",
+    template: "%s | PlateSync",
   },
   description:
     "India's premier multiplayer QR table ordering app & real-time Kitchen Display System (KDS). Shared live carts, consensus approvals, and counter cashier billing for restaurants and hotels across Kerala & India.",
@@ -45,23 +45,23 @@ export const metadata: Metadata = {
     "collaborative group dining QR",
     "digital restaurant menu card",
     "restaurant table management software",
-    "TableSync India",
+    "PlateSync India",
     "PlateSync",
   ],
-  applicationName: "TableSync",
-  authors: [{ name: "TableSync India", url: "https://tablesync.in" }],
-  creator: "TableSync",
-  publisher: "TableSync",
+  applicationName: "PlateSync",
+  authors: [{ name: "PlateSync India", url: "https://www.platesync.in" }],
+  creator: "PlateSync",
+  publisher: "PlateSync",
   category: "business",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "TableSync | Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
+    title: "PlateSync | Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
     description:
       "Transform your dining room: group diners scan one QR code to build a shared real-time cart, vote on rounds together, and settle bills seamlessly.",
     url: "/",
-    siteName: "TableSync India",
+    siteName: "PlateSync India",
     locale: "en_IN",
     type: "website",
     images: [
@@ -69,13 +69,13 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "TableSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
+        alt: "PlateSync - Multiplayer QR Menu & Kitchen Display System for Indian Restaurants",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "TableSync | Multiplayer QR Menu & KDS for Restaurants in India",
+    title: "PlateSync | Multiplayer QR Menu & KDS for Restaurants in India",
     description:
       "Multiplayer table ordering app & real-time KDS for restaurants, cafes, and hotels across India.",
     images: ["/opengraph-image"],
@@ -94,7 +94,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "TableSync",
+    title: "PlateSync",
   },
   formatDetection: {
     telephone: false,
@@ -129,7 +129,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="TableSync" />
+        <meta name="apple-mobile-web-app-title" content="PlateSync" />
         <meta name="theme-color" content="#FFFFFF" />
         <link rel="apple-touch-icon" href="/icon.svg" />
         <link rel="icon" type="image/svg+xml" href="/icon.svg" />

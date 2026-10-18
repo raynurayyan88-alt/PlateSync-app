@@ -10,7 +10,7 @@ interface AdminPageProps {
 }
 
 export const metadata: Metadata = {
-  title: "Admin Portal | TableSync",
+  title: "Admin Portal | PlateSync",
   description: "Manage cuisines, categories, dishes, custom modifier groups, and table QR codes",
   robots: {
     index: false,

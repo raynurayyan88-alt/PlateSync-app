@@ -20,7 +20,7 @@ PlateSync is a real-time multiplayer restaurant ordering Progressive Web App (PW
 ## 📁 Project Structure
 
 ```
-tablesync/
+platesync/
 ├── prisma/
 │   └── schema.prisma           # Database models (Restaurant, Table, Session, MenuItem, Order, OrderItem)
 ├── server/

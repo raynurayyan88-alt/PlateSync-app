@@ -167,7 +167,7 @@ export default function HomePageClient() {
             </div>
             <div>
               <span className="font-extrabold text-lg tracking-tight text-[#1C1917]">
-                TableSync
+                PlateSync
               </span>
               <span className="hidden sm:inline-block ml-2 text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
                 Live Table OS
@@ -417,7 +417,7 @@ export default function HomePageClient() {
             <span>Engineered for Indian Dining Culture</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-[#1C1917] tracking-tight">
-            Why Multi-Cuisine Hotels Love TableSync
+            Why Multi-Cuisine Hotels Love PlateSync
           </h2>
           <p className="text-sm sm:text-base text-stone-600">
             No friction for guests, no operational disruption for your kitchen or cash counter.
