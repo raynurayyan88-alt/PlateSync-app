@@ -1,7 +1,9 @@
+import React, { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ClientHydrationGuard from "@/components/ClientHydrationGuard";
+import Footer from "@/components/Footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -136,7 +138,12 @@ export default function RootLayout({
         suppressHydrationWarning
         className="min-h-full flex flex-col bg-[#FAF9F6] text-[#1C1917] font-sans antialiased"
       >
-        <ClientHydrationGuard>{children}</ClientHydrationGuard>
+        <ClientHydrationGuard>
+          <div className="flex-1 flex flex-col">{children}</div>
+          <Suspense fallback={null}>
+            <Footer />
+          </Suspense>
+        </ClientHydrationGuard>
       </body>
     </html>
   );

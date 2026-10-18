@@ -16,6 +16,11 @@ import {
   ExternalLink,
   Store,
   ChevronRight,
+  ChevronDown,
+  HelpCircle,
+  MapPin,
+  Mail,
+  MessageSquare,
 } from "lucide-react";
 
 export default function HomePageClient() {
@@ -26,6 +31,9 @@ export default function HomePageClient() {
   const [city, setCity] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Interactive Hotelier FAQ State
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   // Hero interactive ticket demo state
   const [interactiveItems, setInteractiveItems] = useState([
@@ -476,7 +484,7 @@ export default function HomePageClient() {
       {/* ------------------------------------------------------------------ */}
       {/* 4. TRANSPARENT PRICING IN ₹ (Monospace Numerals)                   */}
       {/* ------------------------------------------------------------------ */}
-      <section className="px-4 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto border-t border-[#E7E5E4]">
+      <section id="pricing" className="px-4 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto border-t border-[#E7E5E4]">
         <div className="text-center max-w-2xl mx-auto space-y-3 mb-12 sm:mb-16">
           <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-stone-600 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
             <span>Fair &amp; Transparent</span>
@@ -636,6 +644,153 @@ export default function HomePageClient() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
+      {/* 4.5. FOUNDER STORY & HOTELIER FAQ ACCORDION                        */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="px-4 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto border-t border-[#E7E5E4] space-y-16">
+        {/* Founder Story Card */}
+        <div className="bg-white border border-[#E7E5E4] rounded-3xl p-6 sm:p-10 shadow-xs relative overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-8 space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold tracking-wide">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Built for Indian Hospitality</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-[#1C1917] tracking-tight">
+                "No hotel should have to buy ₹80,000 billing hardware just to eliminate waiter delays."
+              </h3>
+              <p className="text-sm sm:text-base text-stone-600 leading-relaxed">
+                Hi, I’m <strong>Mohd Rayyan</strong>, founder of PlateSync, based in Kerala. Dining out with family and friends at packed restaurants during dinner rushes should be a celebration — but all too often it starts with waving your hands for 10 minutes to catch an overworked waiter, only to watch orders scribbled on paper notepads and shouted into the kitchen.
+              </p>
+              <p className="text-sm sm:text-base text-stone-600 leading-relaxed">
+                Traditional restaurant software companies try to sell hoteliers expensive proprietary cash registers, locked-in payment gateways, and heavy touchscreens. I built PlateSync to solve this from the ground up: <strong>let tables order collaboratively on their own phones, agree on rounds together, and chime tickets directly to your kitchen tablet</strong> — while your staff continues billing on your existing POS as usual.
+              </p>
+
+              <div className="pt-2 flex flex-wrap items-center gap-4 text-xs font-semibold text-stone-700">
+                <div className="flex items-center gap-1.5 bg-stone-100 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <MapPin className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Kerala, India</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-stone-100 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <Mail className="w-3.5 h-3.5 text-stone-500" />
+                  <a href="mailto:mohdrayyan@platesync.in" className="hover:underline">
+                    mohdrayyan@platesync.in
+                  </a>
+                </div>
+                <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-xl border border-emerald-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Direct Founder WhatsApp Support</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-4 bg-[#FAF9F6] border border-[#E7E5E4] rounded-2xl p-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-[#1C1917] text-white flex items-center justify-center text-xl font-black mx-auto shadow-sm">
+                MR
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-[#1C1917]">Mohd Rayyan</h4>
+                <p className="text-xs text-stone-500 font-medium">Founder &amp; Architect, PlateSync</p>
+                <p className="text-[11px] text-stone-400 mt-0.5">Kerala, India</p>
+              </div>
+              <p className="text-xs text-stone-600 italic">
+                "Our mission is simple: keep your cash and staff, modernize your tables, and give your guests the smoothest group dining experience in India."
+              </p>
+              <div className="pt-2 border-t border-stone-200">
+                <a
+                  href="https://wa.me/919995550000?text=Hi%20Rayyan,%20I'm%20interested%20in%20PlateSync%20for%20my%20restaurant"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Chat on WhatsApp</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Interactive FAQ Accordion Section */}
+        <div className="space-y-8">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-stone-600 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Got Questions?</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#1C1917] tracking-tight">
+              Frequently Asked Questions by Hoteliers
+            </h2>
+            <p className="text-sm sm:text-base text-stone-600">
+              Everything you need to know about setting up PlateSync without disturbing your current counter operations.
+            </p>
+          </div>
+
+          <div className="max-w-3xl mx-auto space-y-3">
+            {[
+              {
+                question: "Do I need to replace my existing billing POS machine?",
+                answer:
+                  "No. PlateSync acts as a digital waiter's notepad routing orders straight to your counter or kitchen tablet; your staff bills on your existing POS machine as usual. There is zero disruption to your daily accounting, cash drawer, or GST tax filing.",
+              },
+              {
+                question: "Do customers need to download an app or create an account?",
+                answer:
+                  "No. It launches instantly in any mobile browser (Safari, Chrome) when guests scan the table QR code. Guests enter their nickname (e.g. Rahul, Sneha), build their shared cart together, and vote with zero friction or passwords.",
+              },
+              {
+                question: "What happens if a customer has bad mobile network?",
+                answer:
+                  "PlateSync features built-in offline safeguards that hold and resync state automatically. If a guest temporarily loses Wi-Fi or cellular signal in a basement or corner booth, their selections remain buffered locally and sync seamlessly the moment signal returns.",
+              },
+              {
+                question: "Can guests still pay their waiter directly?",
+                answer:
+                  "Yes. PlateSync captures order consensus and kitchen dispatch only; payments, UPI QR stands, cash settlements, and tips stay entirely with your staff and existing billing counter.",
+              },
+              {
+                question: "How long does onboarding take?",
+                answer:
+                  "Under 15 minutes. Enter your restaurant name, upload or customize your dishes in the Admin Portal, and print crisp QR table tents directly from your office printer. You can start serving live tables the exact same afternoon.",
+              },
+            ].map((faq, index) => {
+              const isOpen = openFaq === index;
+              return (
+                <div
+                  key={index}
+                  className="bg-white border border-[#E7E5E4] rounded-2xl overflow-hidden transition-all shadow-2xs"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaq(isOpen ? null : index)}
+                    className="w-full px-5 sm:px-6 py-4 sm:py-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-stone-50/70 transition-colors"
+                  >
+                    <span className="text-sm sm:text-base font-bold text-[#1C1917]">
+                      {faq.question}
+                    </span>
+                    <div
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border transition-all ${
+                        isOpen
+                          ? "bg-[#1C1917] text-white border-[#1C1917] rotate-180"
+                          : "bg-stone-100 text-stone-600 border-stone-200"
+                      }`}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-5 sm:px-6 pb-5 pt-1 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-stone-100">
+                      {faq.answer}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
       {/* 5. INSTANT SELF-SERVE ONBOARDING FORM                             */}
       {/* ------------------------------------------------------------------ */}
       <section
@@ -728,36 +883,7 @@ export default function HomePageClient() {
         </div>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 6. FOOTER                                                          */}
-      {/* ------------------------------------------------------------------ */}
-      <footer className="border-t border-[#E7E5E4] bg-white px-4 sm:px-8 py-10 text-xs text-stone-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-[#1C1917] text-white flex items-center justify-center">
-              <UtensilsCrossed className="w-3.5 h-3.5" />
-            </div>
-            <span className="font-bold text-stone-900">TableSync</span>
-            <span>• Collaborative Live Dining for India</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Link href="/r/grand-empire/t/5" className="hover:text-stone-900 transition-colors">
-              Customer Demo
-            </Link>
-            <Link href="/kds/grand-empire" className="hover:text-stone-900 transition-colors">
-              Kitchen Display
-            </Link>
-            <Link href="/admin/grand-empire" className="hover:text-stone-900 transition-colors">
-              Admin Portal
-            </Link>
-          </div>
-
-          <div className="font-mono text-[11px] text-stone-400">
-            © 2026 TableSync India. All prices formatted in ₹ INR.
-          </div>
-        </div>
-      </footer>
+      {/* Corporate footer rendered globally by layout.tsx */}
     </div>
   );
 }
